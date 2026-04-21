@@ -2,7 +2,7 @@ import { reactive, html, watch } from 'https://esm.sh/@arrow-js/core'
 import { render } from 'https://esm.sh/@arrow-js/framework'
 import Chart from 'https://esm.sh/chart.js/auto'
 import 'https://esm.sh/chartjs-adapter-date-fns'
-import { strings, testNamesRu, categoriesRu } from './i18n.js'
+import { strings } from './i18n.js'
 
 // ───────────── reactive root ─────────────
 
@@ -10,7 +10,6 @@ const state = reactive({
   rows: [],
   csvPath: '',
   context: null,
-  lang: localStorage.getItem('lang') === 'ru' ? 'ru' : 'en',
   activeTab: 'summary',
   categoryFilter: 'All',
   tableSort: { col: 'date', dir: 'desc' },
@@ -18,24 +17,16 @@ const state = reactive({
   detail: null,
 })
 
-// ───────────── translation helpers ─────────────
+// ───────────── UI-chrome strings ─────────────
 
 export const t = (key) => {
-  const pack = strings[state.lang] ?? {}
-  const fallback = strings.en ?? {}
-  const v = pack[key] !== undefined ? pack[key] : fallback[key]
+  const v = strings[key]
   return v === undefined ? key : v
-}
-
-export const testLabel = (name) => {
-  if (state.lang === 'ru') return testNamesRu[name] ?? name
-  return name
 }
 
 export const catLabel = (cat) => {
   if (!cat) return ''
   if (cat === 'All') return t('category_all')
-  if (state.lang === 'ru') return categoriesRu[cat] ?? cat
   return cat
 }
 
@@ -88,24 +79,7 @@ export const testsByName = () => {
   return byName
 }
 
-// ───────────── language persistence ─────────────
-
-watch(() => {
-  localStorage.setItem('lang', state.lang)
-  document.documentElement.setAttribute('lang', state.lang)
-})
-
 // ───────────── chrome components ─────────────
-
-const LangSwitch = () => html`
-  <nav class="lang-switch" aria-label="Language">
-    <button class="${() => `lang-btn ${state.lang === 'en' ? 'active' : ''}`}"
-            @click="${() => { state.lang = 'en' }}">EN</button>
-    <span class="lang-sep">·</span>
-    <button class="${() => `lang-btn ${state.lang === 'ru' ? 'active' : ''}`}"
-            @click="${() => { state.lang = 'ru' }}">RU</button>
-  </nav>
-`
 
 const metaLine = () => {
   if (!state.rows.length) return t('empty_title')
@@ -248,13 +222,13 @@ const Priorities = () => html`
             <article class="${`priority-card sev-${rec.severity}`}"
                      @click="${() => { state.detail = test }}">
               <div class="priority-top">
-                <span class="priority-name">${() => testLabel(test)}</span>
-                <span class="${`priority-sev sev-${rec.severity}`}">${() => severityLabel(rec.severity)}</span>
+                <span class="priority-name">${test}</span>
+                <span class="${`priority-sev sev-${rec.severity}`}">${severityLabel(rec.severity)}</span>
               </div>
               <div class="priority-meta">
                 <span class="priority-val">${fmt(latest.value)}<span class="unit">${latest.unit || ''}</span></span>
                 ${flag ? html`<span class="${`flag ${flag}`}">${flag}</span>` : ''}
-                ${hasRange ? html`<span class="priority-range">${() => `${t('detail_range')} ${rangeLow}–${rangeHigh}`}</span>` : ''}
+                ${hasRange ? html`<span class="priority-range">${t('detail_range')} ${rangeLow}–${rangeHigh}</span>` : ''}
                 <span class="priority-range">${latest.date}</span>
               </div>
               <p class="priority-headline">${rec.headline}</p>
@@ -280,8 +254,7 @@ const Priorities = () => html`
 
 const summaryEntries = () => {
   const byName = testsByName()
-  const names = Object.keys(byName).sort((a, b) =>
-    testLabel(a).localeCompare(testLabel(b), state.lang === 'ru' ? 'ru' : 'en'))
+  const names = Object.keys(byName).sort((a, b) => a.localeCompare(b))
   return names.map((name) => {
     const series = byName[name]
     const latest = series[series.length - 1]
@@ -327,7 +300,7 @@ const SummaryPanel = () => html`
         return html`
           <article class="card" @click="${() => { state.detail = name }}">
             <div class="name">
-              <span class="name-text">${() => testLabel(name)}</span>
+              <span class="name-text">${name}</span>
               ${flag ? html`<span class="${`flag ${flag}`}">${flag}</span>` : ''}
             </div>
             <div class="value">${fmt(latest.value)}<span class="unit">${latest.unit || ''}</span></div>
@@ -384,7 +357,7 @@ const CategoryFilter = () => html`
     ${() => categoryList().map((c) => html`
       <button class="${() => `chip ${state.categoryFilter === c ? 'active' : ''}`}"
               @click="${() => { state.categoryFilter = c }}">
-        ${() => catLabel(c)}
+        ${catLabel(c)}
       </button>
     `.key(c))}
   </div>
@@ -396,7 +369,7 @@ const chartNames = () => {
   const byName = testsByName()
   return Object.keys(byName)
     .filter((n) => state.categoryFilter === 'All' || byName[n][0].category === state.categoryFilter)
-    .sort((a, b) => testLabel(a).localeCompare(testLabel(b), state.lang === 'ru' ? 'ru' : 'en'))
+    .sort((a, b) => a.localeCompare(b))
 }
 
 const ChartsPanel = () => html`
@@ -419,8 +392,8 @@ const ChartsPanel = () => html`
         const category = series[0].category || ''
         return html`
           <section class="chart-card" data-test="${name}">
-            <h3>${() => testLabel(name)}</h3>
-            <p class="sub">${() => catLabel(category)}${unit ? ` · ${unit}` : ''}</p>
+            <h3>${name}</h3>
+            <p class="sub">${catLabel(category)}${unit ? ` · ${unit}` : ''}</p>
             <div class="chart-wrap"><canvas data-canvas="${name}"></canvas></div>
           </section>
         `.key(name)
@@ -570,8 +543,7 @@ watch(() => {
   const rows = state.rows
   const tab = state.activeTab
   const cat = state.categoryFilter
-  const lang = state.lang
-  void rows; void cat; void lang   // silence unused-var tools; reads are intentional
+  void rows; void cat   // silence unused-var tools; reads are intentional
 
   if (tab !== 'charts' || !rows.length) {
     chartInstances.forEach((c) => c.destroy())
@@ -618,8 +590,8 @@ const tableRows = () => {
   const rows = state.rows.filter((r) => {
     if (!q) return true
     const searchable = [
-      r.date, r.test_name, testLabel(r.test_name),
-      r.unit, r.category, catLabel(r.category),
+      r.date, r.test_name,
+      r.unit, r.category,
       r.source_file, r.flag,
       r.value != null ? String(r.value) : '',
     ].join(' ').toLowerCase()
@@ -627,8 +599,7 @@ const tableRows = () => {
   })
   rows.sort((a, b) => {
     let av = a[col], bv = b[col]
-    if (col === 'test_name') { av = testLabel(av); bv = testLabel(bv) }
-    if (col === 'category')  { av = catLabel(av);  bv = catLabel(bv)  }
+    if (col === 'category') { av = catLabel(av); bv = catLabel(bv) }
     const cmp = (typeof av === 'number' && typeof bv === 'number')
       ? av - bv
       : String(av ?? '').localeCompare(String(bv ?? ''))
@@ -677,8 +648,7 @@ const TablePanel = () => html`
                 if (c === 'flag' && v) {
                   return html`<td><span class="${`flag ${v}`}">${v}</span></td>`
                 }
-                if (c === 'test_name') return html`<td class="${cls}">${() => testLabel(v)}</td>`
-                if (c === 'category')  return html`<td class="${cls}">${() => catLabel(v)}</td>`
+                if (c === 'category')  return html`<td class="${cls}">${catLabel(v)}</td>`
                 return html`<td class="${cls}">${v == null || v === '' ? '' : String(v)}</td>`
               })}
             </tr>
@@ -725,16 +695,6 @@ watch(() => {
   })
 })
 
-const readingsFor = (lang, n) => {
-  const fn = strings[lang]?.detail_reading_n ?? ((m) => `${m} readings`)
-  return fn(n)
-}
-
-const noInfoFor = (lang, labeledName) => {
-  const fn = strings[lang]?.detail_no_info ?? ((m) => `No reference notes yet for "${m}".`)
-  return fn(labeledName)
-}
-
 const DetailBody = (entry) => {
   const { name, series, latest, info, rec } = entry
   const flag = latest.flag || ''
@@ -746,20 +706,20 @@ const DetailBody = (entry) => {
   return html`
     <article class="detail-body">
       <header class="detail-head">
-        <p class="detail-eyebrow">${() => catLabel(latest.category || '')}</p>
-        <h2 id="detail-name">${() => testLabel(name)}</h2>
+        <p class="detail-eyebrow">${catLabel(latest.category || '')}</p>
+        <h2 id="detail-name">${name}</h2>
         <div class="detail-latest">
           <span class="detail-val">${fmt(latest.value)}<span class="unit">${latest.unit || ''}</span></span>
           ${flag ? html`<span class="${`flag ${flag}`}">${flag}</span>` : ''}
           <span class="detail-date">${latest.date}</span>
-          <span class="detail-range">${() => hasRange ? `${t('detail_range')} ${rangeLow}..${rangeHigh}` : t('detail_no_range')}</span>
+          <span class="detail-range">${hasRange ? `${t('detail_range')} ${rangeLow}..${rangeHigh}` : t('detail_no_range')}</span>
         </div>
       </header>
 
       ${rec ? html`
         <div class="${`detail-rec sev-${rec.severity}`}">
           <div class="detail-rec-top">
-            <span class="${`detail-rec-label sev-${rec.severity}`}">${() => severityLabel(rec.severity)}</span>
+            <span class="${`detail-rec-label sev-${rec.severity}`}">${severityLabel(rec.severity)}</span>
           </div>
           <p class="detail-rec-headline">${rec.headline || ''}</p>
           <p class="detail-rec-detail">${rec.detail || ''}</p>
@@ -794,7 +754,7 @@ const DetailBody = (entry) => {
       ` : html`
         <section class="detail-section">
           <h3>${() => t('detail_no_info_h')}</h3>
-          <div class="detail-missing">${() => noInfoFor(state.lang, testLabel(name))}</div>
+          <div class="detail-missing">${strings.detail_no_info(name)}</div>
         </section>
       `}
 
@@ -806,7 +766,7 @@ const DetailBody = (entry) => {
       <section class="detail-section detail-history">
         <h3>
           <span>${() => t('detail_readings')}</span>
-          <span class="detail-history-count">· ${() => readingsFor(state.lang, hist.length)}</span>
+          <span class="detail-history-count">· ${strings.detail_reading_n(hist.length)}</span>
         </h3>
         <div class="detail-history-scroll">
           <table id="detail-history-table">
@@ -858,7 +818,6 @@ const DetailModal = () => html`
 // ───────────── root view ─────────────
 
 const App = () => html`
-  ${LangSwitch()}
   ${Header()}
   <main class="wrap">
     ${() => state.activeTab === 'summary' ? SummaryPanel() : ''}

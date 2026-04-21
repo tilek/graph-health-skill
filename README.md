@@ -103,11 +103,9 @@ graph-health-skill/
 ├── scripts/
 │   ├── append_to_csv.py      # idempotent CSV writer
 │   └── serve.py              # stdlib HTTP server for the dashboard
-├── assets/                   # dashboard frontend (Chart.js)
+├── assets/                   # dashboard frontend (Arrow + Chart.js, CDN-loaded)
 │   ├── index.html, app.js, styles.css
-│   ├── biomarkers.js / biomarkers.ru.js        # ~95 biomarker notes, EN/RU
-│   ├── recommendations.js / recommendations.ru.js  # personalized notes, EN/RU
-│   └── i18n.js               # UI strings + test-name / category translations
+│   └── i18n.js               # UI chrome strings
 └── references/
     ├── extraction-guide.md   # per-format patterns, unit conversions
     └── test-names.md         # canonical names + aliases
