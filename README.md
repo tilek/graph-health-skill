@@ -33,6 +33,21 @@ ln -s "$PWD" ~/.claude/skills/graph-health-skill
 
 The skill activates when Claude detects a health-data request (lab report, blood work, biomarker tracking, etc.).
 
+## Updating the skill
+
+Pull the latest from wherever you installed it:
+
+```bash
+cd ~/.claude/skills/graph-health-skill
+git pull
+```
+
+Your `health_data.csv` is gitignored and will not be touched by updates — a `git pull` only changes the skill's own files (SKILL.md, scripts, assets, references). The dashboard will pick up changes on the next browser refresh; if `serve.py` itself was updated, restart it (Ctrl+C and rerun).
+
+If a pull reports local changes, it usually means you tweaked a skill file (e.g. added entries to `biomarkers.js` or `references/test-names.md`). Stash your edits first (`git stash`), pull, then reapply (`git stash pop`) — or fork the repo if you're maintaining a significantly customized version.
+
+After a pull that changes `recommendations.js`, regenerate the personalized notes against your current readings by asking Claude something like *"the skill was updated; regenerate my personalized recommendations from `health_data.csv`"*. The notes reference actual values, so they should be rebuilt whenever either the data or the skill's analysis logic changes.
+
 ## Using it — a typical session
 
 ```
