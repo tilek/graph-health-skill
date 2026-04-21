@@ -2,223 +2,317 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the vanilla-JS frontend under `assets/` with an Arrow-based, reactive, ESM-only app while preserving visual parity, feature parity, and the no-install delivery model.
+**Goal:** Rewrite the frontend in Arrow (reactive, ESM) **and** remove all bundled per-test reference content from the skill. Agents generate a `health_context.json` in the user's workspace during extraction; the server serves it alongside CSV rows.
 
-**Architecture:** No-build, CDN ESM. One reactive root state object drives a single `App()` view. Chart.js is kept and mounted via a `watch()` side-effect. All data files become ESM modules exporting `{ en, ru }` bilingual objects.
+**Architecture:** No-build, CDN ESM. One reactive root state. Per-test reference / recommendation content moves from four bundled JS files into a runtime-fetched single-language JSON file in the user's workspace.
 
-**Tech Stack:** `@arrow-js/core` and `@arrow-js/framework` from esm.sh, Chart.js from esm.sh, Python stdlib server (unchanged).
+**Tech Stack:** `@arrow-js/core`, `@arrow-js/framework`, Chart.js via esm.sh; Python stdlib server.
 
 ---
 
 ## Project context
 
 ### What's changing
-- `assets/index.html` — rewrites the entire shell to a minimal `<div id="app"></div>` + one module script.
-- `assets/app.js` — full rewrite using Arrow templates and reactive state.
-- `assets/biomarkers.js` + `assets/biomarkers.ru.js` → single `assets/biomarkers.js` exporting `{ en, ru }`.
-- `assets/recommendations.js` + `assets/recommendations.ru.js` → single `assets/recommendations.js` exporting `{ en, ru }`.
-- `assets/i18n.js` — converted to ESM exports.
+- `scripts/serve.py` — extends `/api/data` to include a `context` field loaded from `health_context.json` next to the CSV.
+- `SKILL.md` — pipeline diagram + new step documenting `health_context.json`.
+- `assets/index.html` — replaced with a minimal shell.
+- `assets/app.js` — full rewrite using Arrow.
+- `assets/i18n.js` — converted to ESM exports; UI chrome only.
+- **Deleted:** `assets/biomarkers.js`, `assets/biomarkers.ru.js`, `assets/recommendations.js`, `assets/recommendations.ru.js`.
 
 ### What's NOT changing
-- `scripts/serve.py`, `scripts/append_to_csv.py` — untouched.
-- `assets/styles.css` — every class name and DOM structure the CSS targets is reproduced exactly.
-- CSV schema, `/api/data` endpoint shape.
+- `scripts/append_to_csv.py` — untouched.
+- CSV schema.
+- `assets/styles.css` — untouched.
+- `references/` directory.
 
 ### Rules during migration
 - No window globals. Everything is ESM `import` / `export`.
 - Prefer the simplest Arrow pattern. Don't introduce SSR, hydration, TypeScript, or bundlers.
-- Preserve every class name used by `styles.css`. Grep before renaming anything DOM-facing.
-- Each task's "verification" is manual-in-browser: `python3 scripts/serve.py --csv health_data.csv` and check.
-- Intermediate commits may leave the dashboard half-working (we're on a branch). The final task restores full functionality.
+- Preserve every CSS class name used by `styles.css`.
+- Each task's verification is manual: start the server, load the browser, look at it.
+- Intermediate commits may leave the dashboard half-working. The final task confirms end-to-end parity.
 
-### Existing data files — structure to preserve
-- `i18n.js` exposes three globals today: `window.I18N = { en, ru }`, `window.TEST_NAMES_RU = {...}`, `window.CATEGORIES_RU = {...}`. Preserve all keys; only change delivery.
-- `biomarkers.js` / `biomarkers.ru.js` each export an object keyed by canonical test name, with shape `{ description, high, low, suggestions[] }`.
-- `recommendations.js` / `recommendations.ru.js` each export an object keyed by canonical test name, with shape `{ severity, headline, detail, actions[] }`. Severity is `"attention" | "watch" | "info"`.
+### Context JSON format (single source of truth for this plan)
 
----
+`health_context.json`, written by the agent, in the **same directory as the CSV**:
 
-## Task 1: Merge `biomarkers.js` with `biomarkers.ru.js`
-
-**Files:**
-- Modify: `assets/biomarkers.js` (replace entire contents)
-- Delete: `assets/biomarkers.ru.js`
-
-**Goal:** Single ESM module exporting both languages. No behavior change, just structure.
-
-- [ ] **Step 1: Read both current files to get the full bilingual data**
-
-Run:
-```bash
-wc -l assets/biomarkers.js assets/biomarkers.ru.js
-```
-Expected: both files non-empty, ~800 lines each.
-
-- [ ] **Step 2: Replace `assets/biomarkers.js` with the merged ESM version**
-
-New shape (preserve every existing biomarker entry verbatim):
-
-```js
-// Biomarker reference content, bilingual.
-// Keyed by canonical test_name from health_data.csv.
-// Shape per entry: { description, high, low, suggestions[] }
-
-export const biomarkers = {
-  en: {
-    "Hemoglobin": {
-      description: "The oxygen-carrying protein inside red blood cells. Determines how much oxygen your blood can deliver to tissues.",
-      high: "Dehydration, smoking, high altitude, or rarely polycythemia (bone-marrow overproduction).",
-      low: "Anemia — commonly iron deficiency, B12 or folate deficiency, blood loss, or chronic disease.",
-      suggestions: [
-        "If low: eat iron-rich foods (red meat, liver, lentils, spinach) and pair with vitamin C to boost absorption.",
-        "Check ferritin and B12 together — they tell you which deficiency pattern this is.",
-        "Rule out hidden blood loss (heavy menses, GI sources) with your doctor.",
-        "If high: hydrate consistently; if you smoke, stopping raises the red-cell count back toward normal.",
-      ],
-    },
-    // …every other entry currently in assets/biomarkers.js, copied verbatim…
+```json
+{
+  "biomarkers": {
+    "<TestName>": {
+      "description": "string",
+      "high":        "string | optional",
+      "low":         "string | optional",
+      "suggestions": ["string", "..."]
+    }
   },
-  ru: {
-    "Hemoglobin": {
-      description: "Белок красных кровяных клеток, переносящий кислород. Определяет, сколько кислорода кровь доставляет тканям.",
-      high: "Обезвоживание, курение, высокогорье, редко — полицитемия (переизбыток в костном мозге).",
-      low: "Анемия — чаще всего железодефицит, дефицит B12 или фолиевой кислоты, кровопотеря, хронические болезни.",
-      suggestions: [
-        "При низких значениях: красное мясо, печень, бобовые, шпинат; сочетайте с витамином C для всасывания.",
-        "Одновременно проверьте ферритин и B12 — они подскажут тип дефицита.",
-        "Исключите скрытую кровопотерю (обильные менструации, ЖКТ) совместно с врачом.",
-        "При высоких значениях: пейте достаточно воды; если курите — отказ возвращает показатели к норме.",
-      ],
-    },
-    // …every other entry currently in assets/biomarkers.ru.js, copied verbatim…
-  },
+  "recommendations": {
+    "<TestName>": {
+      "severity": "attention | watch | info",
+      "headline": "string",
+      "detail":   "string",
+      "actions":  ["string", "..."]
+    }
+  }
 }
 ```
 
-**Copy the full English content from the existing `assets/biomarkers.js` file** (under `window.BIOMARKERS = { ... }`) into `biomarkers.en`. **Copy the full Russian content from `assets/biomarkers.ru.js`** (under `window.BIOMARKERS_RU = { ... }`) into `biomarkers.ru`. No entry may be dropped, renamed, or rephrased.
+Either top-level key may be absent or `{}`. File may be absent — consumer treats all of it as optional.
 
-- [ ] **Step 3: Delete `assets/biomarkers.ru.js`**
+---
+
+## Task 1: Delete the four bundled content files
+
+**Files:**
+- Delete: `assets/biomarkers.js`
+- Delete: `assets/biomarkers.ru.js`
+- Delete: `assets/recommendations.js`
+- Delete: `assets/recommendations.ru.js`
+
+**Goal:** Remove content that is about to be generated dynamically. Dashboard is broken after this task; it comes back online in Task 5.
+
+- [ ] **Step 1: Delete the four files**
 
 ```bash
-rm assets/biomarkers.ru.js
+rm assets/biomarkers.js assets/biomarkers.ru.js assets/recommendations.js assets/recommendations.ru.js
 ```
 
-- [ ] **Step 4: Verify shape with Node**
+- [ ] **Step 2: Verify they're gone**
 
-Run:
 ```bash
-node --input-type=module -e "
-import('./assets/biomarkers.js').then(m => {
-  const en = Object.keys(m.biomarkers.en).length
-  const ru = Object.keys(m.biomarkers.ru).length
-  console.log('en entries:', en, 'ru entries:', ru)
-  if (!m.biomarkers.en['Hemoglobin']?.description) throw new Error('missing EN Hemoglobin')
-  if (!m.biomarkers.ru['Hemoglobin']?.description) throw new Error('missing RU Hemoglobin')
-})
-"
+ls assets/biomarkers.js assets/biomarkers.ru.js assets/recommendations.js assets/recommendations.ru.js 2>&1 | grep -c "No such file"
 ```
-Expected: prints non-zero counts for both en and ru, no errors thrown.
+Expected: `4`
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add -u assets/biomarkers.js assets/biomarkers.ru.js assets/recommendations.js assets/recommendations.ru.js
+git commit -m "Remove bundled biomarker and recommendation content
+
+The agent now writes these to health_context.json in the user's
+workspace during extraction. See SKILL.md for the format."
+```
+
+---
+
+## Task 2: Extend `scripts/serve.py` to serve context JSON
+
+**Files:**
+- Modify: `scripts/serve.py` — `_send_data` method
+
+**Goal:** `/api/data` returns `{ rows, csv_path, context }`. `context` is the parsed `health_context.json` next to the CSV, or `null` when missing or unreadable.
+
+- [ ] **Step 1: Update `_send_data`**
+
+Open `scripts/serve.py`. Replace the body of `_send_data` with:
+
+```python
+        def _send_data(self):
+            rows: list[dict] = []
+            if csv_path.exists():
+                with csv_path.open(newline="") as f:
+                    rows = list(csv.DictReader(f))
+
+            context = None
+            context_path = csv_path.parent / "health_context.json"
+            if context_path.exists():
+                try:
+                    with context_path.open() as f:
+                        context = json.load(f)
+                except (OSError, json.JSONDecodeError) as exc:
+                    print(f"  warning: could not read {context_path}: {exc}")
+
+            body = json.dumps({
+                "rows": rows,
+                "csv_path": str(csv_path),
+                "context": context,
+            }).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+```
+
+No other changes to the file.
+
+- [ ] **Step 2: Verify with a missing context file**
+
+From the project root:
+
+```bash
+python3 scripts/serve.py --csv health_data.csv --no-open --port 8765 &
+SERVER_PID=$!
+sleep 0.5
+curl -s http://127.0.0.1:8765/api/data | python3 -c "import json,sys; d=json.load(sys.stdin); print('rows:', len(d['rows']), 'context:', d['context'])"
+kill $SERVER_PID
+```
+
+Expected output: `rows: <N> context: None` (no `health_context.json` exists yet in the project root).
+
+- [ ] **Step 3: Verify with a valid context file**
+
+```bash
+cat > /tmp/health_context.json <<'EOF'
+{
+  "biomarkers": { "Hemoglobin": { "description": "test", "suggestions": [] } },
+  "recommendations": {}
+}
+EOF
+cp /tmp/health_context.json ./health_context.json
+
+python3 scripts/serve.py --csv health_data.csv --no-open --port 8766 &
+SERVER_PID=$!
+sleep 0.5
+curl -s http://127.0.0.1:8766/api/data | python3 -c "import json,sys; d=json.load(sys.stdin); print('has context:', d['context'] is not None); print('biomarker keys:', list((d['context'] or {}).get('biomarkers', {}).keys()))"
+kill $SERVER_PID
+rm ./health_context.json
+```
+
+Expected output:
+```
+has context: True
+biomarker keys: ['Hemoglobin']
+```
+
+- [ ] **Step 4: Verify with malformed context file**
+
+```bash
+echo "not json {" > ./health_context.json
+
+python3 scripts/serve.py --csv health_data.csv --no-open --port 8767 &
+SERVER_PID=$!
+sleep 0.5
+curl -s http://127.0.0.1:8767/api/data | python3 -c "import json,sys; d=json.load(sys.stdin); print('context:', d['context'])"
+kill $SERVER_PID
+rm ./health_context.json
+```
+
+Expected output: `context: None` (and the server printed a warning about the JSON decode error).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add assets/biomarkers.js
-git add -u assets/biomarkers.ru.js
-git commit -m "Merge biomarkers EN+RU into a single ESM module"
+git add scripts/serve.py
+git commit -m "serve.py: include context JSON in /api/data payload
+
+Reads health_context.json from the CSV's directory on every request.
+Missing or malformed file yields context: null plus a warning log.
+No new endpoint, no new CLI flag."
 ```
 
 ---
 
-## Task 2: Merge `recommendations.js` with `recommendations.ru.js`
+## Task 3: Update `SKILL.md` with the context JSON workflow
 
 **Files:**
-- Modify: `assets/recommendations.js` (replace entire contents)
-- Delete: `assets/recommendations.ru.js`
+- Modify: `SKILL.md`
 
-**Goal:** Same pattern as Task 1, applied to recommendations.
+**Goal:** SKILL.md's pipeline diagram and step-by-step now cover writing `health_context.json`.
 
-- [ ] **Step 1: Replace `assets/recommendations.js` with the merged ESM version**
+- [ ] **Step 1: Update the workflow diagram**
 
-```js
-// Personalized recommendations, bilingual.
-// Keyed by test_name. Shape per entry: { severity, headline, detail, actions[] }
-// severity: "attention" | "watch" | "info"
+Find the code block that begins with `source(s) ──► agent normalizes`. Replace it with:
 
-export const recommendations = {
-  en: {
-    "Insulin": {
-      severity: "attention",
-      headline: "Fasting insulin has risen 5× — early insulin-resistance signal",
-      detail: "11.3 µIU/mL is still within range (2.6–24.9), but in 2016 you were at 2.0. Your HOMA-IR moved from 0.4 to 2.1 over the same period, and SHBG fell from 90 to 25.5 nmol/L. These three readings tell the same story: insulin sensitivity has slipped, even though HbA1c and fasting glucose still read normal. This is the earliest, most actionable metabolic signal in your panel.",
-      actions: [
-        "Add resistance training 3× per week. It raises muscle GLUT4 and drops fasting insulin faster than anything else.",
-        "Cut refined carbs, sugar-sweetened drinks, and ultra-processed snacks. Lead meals with protein and fiber.",
-        "Sleep 7+ hours consistently — one short night measurably reduces next-day insulin sensitivity.",
-        "Walk 10–15 minutes after your two biggest meals — it flattens the glucose/insulin spike.",
-      ],
-    },
-    // …every other entry currently in assets/recommendations.js, copied verbatim…
+```
+source(s) ──► agent normalizes ──► scripts/append_to_csv.py ──► health_data.csv
+                               ╰─► agent writes ────────────► health_context.json ─┐
+                                                                                   ▼
+                                                                 scripts/serve.py ──► dashboard
+```
+
+- [ ] **Step 2: Insert a new step 4 before "Launch the dashboard"**
+
+Renumber the current "### 4. Launch the dashboard" to "### 5. Launch the dashboard" and insert the following new section above it:
+
+```markdown
+### 4. Write the context JSON (optional but recommended)
+
+Alongside the CSV, write `health_context.json` in the same directory. This is what the dashboard's priorities panel and detail modal display per test. Agents regenerate it whenever new rows land.
+
+Shape:
+
+```json
+{
+  "biomarkers": {
+    "Hemoglobin": {
+      "description": "What this biomarker measures, 1–3 sentences.",
+      "high": "Common causes of elevated values.",
+      "low":  "Common causes of depressed values.",
+      "suggestions": [
+        "Actionable, lifestyle-first bullet.",
+        "Another bullet."
+      ]
+    }
   },
-  ru: {
+  "recommendations": {
     "Insulin": {
-      severity: "attention",
-      headline: "Инсулин натощак вырос в 5 раз — ранний сигнал инсулинорезистентности",
-      detail: "11,3 µIU/мл ещё в пределах нормы (2,6–24,9), но в 2016-м у вас было 2,0. За тот же период HOMA-IR вырос с 0,4 до 2,1, а ГСПГ упал с 90 до 25,5 нмоль/л. Три показателя рассказывают одну историю: чувствительность к инсулину снизилась, хотя HbA1c и глюкоза ещё в норме. Это самый ранний и самый действенный метаболический сигнал в вашей панели.",
-      actions: [
-        "Добавьте силовые тренировки 3 раза в неделю. Они повышают GLUT4 в мышцах и снижают инсулин натощак быстрее всего остального.",
-        "Сократите рафинированные углеводы, сладкие напитки и ультрапереработанные снеки. Начинайте приём пищи с белка и клетчатки.",
-        "Сон 7+ часов стабильно — одна короткая ночь заметно снижает чувствительность к инсулину на следующий день.",
-        "10–15 минут прогулки после двух крупных приёмов пищи сглаживают пик глюкозы и инсулина.",
-      ],
-    },
-    // …every other entry currently in assets/recommendations.ru.js, copied verbatim…
-  },
+      "severity": "attention",
+      "headline": "One-line summary tied to this user's actual values.",
+      "detail":   "1–3 sentences citing specific readings and trends.",
+      "actions": [
+        "Concrete step 1.",
+        "Concrete step 2."
+      ]
+    }
+  }
 }
 ```
 
-Copy all entries verbatim from the two existing files. Same rules as Task 1: no entries dropped, renamed, or rephrased.
+Rules:
 
-- [ ] **Step 2: Delete `assets/recommendations.ru.js`**
-
-```bash
-rm assets/recommendations.ru.js
+- **Single language.** Write in whichever language suits the user's data and preference. There is no bilingual nesting.
+- **Keyed by canonical test name** — exactly the `test_name` values used in `health_data.csv`.
+- **Both top-level keys are optional.** Omit `biomarkers` or `recommendations` entirely if you have nothing for them.
+- **Only include tests the user actually has.** No point describing Hemoglobin if it's not in the CSV.
+- **`severity`** is one of `"attention"` (flagged / act now), `"watch"` (in range but drifting / part of a pattern), or `"info"` (context, likely benign).
+- **Keep it concise.** This content is read by a human; verbose writing costs tokens every extraction and makes the dashboard harder to scan.
+- The file is **optional** — if it's missing, the dashboard hides the priorities panel and shows "no reference notes yet" in the detail modal. Writing it is strongly recommended.
 ```
 
-- [ ] **Step 3: Verify shape with Node**
+- [ ] **Step 3: Update the "Files in this skill" section**
 
-```bash
-node --input-type=module -e "
-import('./assets/recommendations.js').then(m => {
-  const en = Object.keys(m.recommendations.en).length
-  const ru = Object.keys(m.recommendations.ru).length
-  console.log('en entries:', en, 'ru entries:', ru)
-  if (!m.recommendations.en['Insulin']?.severity) throw new Error('missing EN Insulin')
-  if (!m.recommendations.ru['Insulin']?.severity) throw new Error('missing RU Insulin')
-})
-"
+Remove references to `biomarkers.js`, `biomarkers.ru.js`, `recommendations.js`, `recommendations.ru.js` if they appear in the file listing. Update the `assets/` bullet to:
+
+```markdown
+- `assets/index.html`, `assets/app.js`, `assets/i18n.js`, `assets/styles.css` — the dashboard frontend (Arrow + Chart.js, loaded from CDN)
 ```
-Expected: prints non-zero counts for both, no errors.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Verify the rendered Markdown**
 
 ```bash
-git add assets/recommendations.js
-git add -u assets/recommendations.ru.js
-git commit -m "Merge recommendations EN+RU into a single ESM module"
+grep -n "health_context.json" SKILL.md | head
+grep -n "biomarkers.js\|biomarkers.ru.js\|recommendations.js\|recommendations.ru.js" SKILL.md
+```
+
+Expected: first grep has matches; second grep prints nothing.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add SKILL.md
+git commit -m "SKILL.md: document health_context.json workflow
+
+Agents now write a single-language JSON alongside the CSV containing
+biomarker reference notes and personalized recommendations. The file
+is optional; the dashboard degrades gracefully when it's absent."
 ```
 
 ---
 
-## Task 3: Convert `i18n.js` to ESM
+## Task 4: Convert `i18n.js` to ESM
 
 **Files:**
-- Modify: `assets/i18n.js` (replace entire contents)
+- Modify: `assets/i18n.js` — replace entire contents
 
-**Goal:** Three named exports replace three globals.
+**Goal:** Named exports replace the three current globals. No string content added or dropped.
 
 - [ ] **Step 1: Replace `assets/i18n.js` with the ESM version**
 
-Preserve every key from the current file. Only delivery changes:
+Preserve every key from the current file verbatim (including function-valued entries like `detail_no_info(name)` and `detail_reading_n(n)`). Only delivery changes:
 
 ```js
 // UI string translations, canonical test-name and category labels.
@@ -226,28 +320,24 @@ Preserve every key from the current file. Only delivery changes:
 
 export const strings = {
   en: {
-    title_main:        "The Health",
-    title_accent:      "Ledger",
-    // …every other EN key from the current window.I18N.en, copied verbatim…
-    // Includes function-valued keys like detail_no_info and detail_reading_n.
+    // …every key from the current window.I18N.en, copied verbatim,
+    // including function-valued keys like detail_no_info and detail_reading_n…
   },
   ru: {
-    title_main:        "Медицинский",
-    title_accent:      "Дневник",
-    // …every other RU key from the current window.I18N.ru, copied verbatim…
+    // …every key from the current window.I18N.ru, copied verbatim…
   },
 }
 
 export const testNamesRu = {
-  // …every entry currently in window.TEST_NAMES_RU, copied verbatim…
+  // …every entry from the current window.TEST_NAMES_RU, copied verbatim…
 }
 
 export const categoriesRu = {
-  // …every entry currently in window.CATEGORIES_RU, copied verbatim…
+  // …every entry from the current window.CATEGORIES_RU, copied verbatim…
 }
 ```
 
-Copy the three current globals verbatim into the three named exports. Function-valued entries (e.g. `detail_no_info(testName)`, `detail_reading_n(n)`) stay as arrow functions.
+Copy the three current globals into the three named exports. Function-valued entries stay as arrow functions.
 
 - [ ] **Step 2: Verify shape with Node**
 
@@ -260,10 +350,12 @@ import('./assets/i18n.js').then(m => {
   const cats = Object.keys(m.categoriesRu).length
   console.log('en strings:', en, 'ru strings:', ru, 'testNamesRu:', names, 'categoriesRu:', cats)
   if (typeof m.strings.en.detail_reading_n !== 'function') throw new Error('detail_reading_n must be a function')
+  if (typeof m.strings.en.detail_no_info !== 'function') throw new Error('detail_no_info must be a function')
 })
 "
 ```
-Expected: prints positive counts for all four; no errors.
+
+Expected: positive counts for all four; no errors.
 
 - [ ] **Step 3: Commit**
 
@@ -274,13 +366,13 @@ git commit -m "Convert i18n.js to ESM exports"
 
 ---
 
-## Task 4: Minimal `index.html` + Arrow bootstrap in `app.js`
+## Task 5: Minimal `index.html` + Arrow bootstrap in `app.js`
 
 **Files:**
-- Modify: `assets/index.html` (replace entire contents)
-- Modify: `assets/app.js` (replace entire contents — first slice)
+- Modify: `assets/index.html` — replace entire contents
+- Modify: `assets/app.js` — replace entire contents (first slice)
 
-**Goal:** Browser loads Arrow, state is populated from `/api/data`, a placeholder message renders. This proves the pipe works before we build out UI.
+**Goal:** Browser loads Arrow, fetches `/api/data`, populates `state.rows` and `state.context`, and renders a placeholder meta line.
 
 - [ ] **Step 1: Replace `assets/index.html`**
 
@@ -304,29 +396,25 @@ git commit -m "Convert i18n.js to ESM exports"
 </html>
 ```
 
-All prior inline DOM (header, tabs, panels, dialog) is gone — Arrow renders the whole app into `#app`. `paper-grain` stays outside because `styles.css` positions it behind everything.
-
-- [ ] **Step 2: Replace `assets/app.js` with the bootstrap-only version**
+- [ ] **Step 2: Replace `assets/app.js` with the bootstrap slice**
 
 ```js
 import { reactive, html, watch } from 'https://esm.sh/@arrow-js/core'
 import { render } from 'https://esm.sh/@arrow-js/framework'
 import Chart from 'https://esm.sh/chart.js/auto'
 import { strings, testNamesRu, categoriesRu } from './i18n.js'
-import { biomarkers } from './biomarkers.js'
-import { recommendations } from './recommendations.js'
 
 // ───────────── reactive root ─────────────
 
 const state = reactive({
   rows: [],
   csvPath: '',
+  context: null,
   lang: localStorage.getItem('lang') === 'ru' ? 'ru' : 'en',
   activeTab: 'summary',
   categoryFilter: 'All',
   tableSort: { col: 'date', dir: 'desc' },
   tableSearch: '',
-  sourceFilter: null,
   detail: null,
 })
 
@@ -351,10 +439,12 @@ export const catLabel = (cat) => {
   return cat
 }
 
-export const biomarkersForLang = () => biomarkers[state.lang] ?? biomarkers.en ?? {}
-export const recommendationsForLang = () => recommendations[state.lang] ?? recommendations.en ?? {}
+// ───────────── context helpers ─────────────
 
-// ───────────── number/row helpers ─────────────
+export const biomarkersContext = () => state.context?.biomarkers ?? {}
+export const recommendationsContext = () => state.context?.recommendations ?? {}
+
+// ───────────── number / row helpers ─────────────
 
 export const fmt = (v) => {
   if (v === null || v === undefined || v === '') return '—'
@@ -410,8 +500,8 @@ watch(() => {
 const App = () => html`
   <main class="wrap">
     <p id="meta" class="meta">${() => state.rows.length
-      ? `${state.rows.length} ${t('meta_readings')} loaded from ${state.csvPath}`
-      : t('empty_title') || 'No data'
+      ? `${state.rows.length} ${t('meta_readings')} · context ${state.context ? 'loaded' : 'none'}`
+      : (t('empty_title') || 'No data')
     }</p>
   </main>
 `
@@ -428,6 +518,7 @@ render(document.getElementById('app'), App())
     rows.sort((a, b) => a.date.localeCompare(b.date))
     state.rows = rows
     state.csvPath = payload.csv_path || ''
+    state.context = payload.context ?? null
   } catch (err) {
     console.error(err)
     state.rows = []
@@ -435,38 +526,50 @@ render(document.getElementById('app'), App())
 })()
 ```
 
-- [ ] **Step 3: Start the server and verify in browser**
+- [ ] **Step 3: Boot and verify**
 
-Run:
 ```bash
 python3 scripts/serve.py --csv health_data.csv --no-open
 ```
 
-In another terminal / browser tab, open `http://127.0.0.1:8765/`. Expected:
-- Page loads.
-- Browser devtools Console: no errors.
-- Body shows one line like `N readings loaded from /path/to/health_data.csv`.
-- Stop the server with Ctrl+C.
+Open `http://127.0.0.1:8765/` in a browser. Expected:
+- Meta line reads something like `N readings · context none` (because no `health_context.json` exists yet).
+- Browser Console: no errors.
+- Ctrl+C to stop.
+
+Now create a tiny context file and reload:
+
+```bash
+cat > health_context.json <<'EOF'
+{
+  "biomarkers": { "Hemoglobin": { "description": "t", "suggestions": [] } },
+  "recommendations": {}
+}
+EOF
+python3 scripts/serve.py --csv health_data.csv --no-open
+```
+
+Reload the browser: meta line says `... · context loaded`. Ctrl+C, then `rm health_context.json`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add assets/index.html assets/app.js
-git commit -m "Arrow bootstrap: minimal shell renders meta from /api/data"
+git commit -m "Arrow bootstrap: minimal shell, fetch rows + context"
 ```
 
 ---
 
-## Task 5: Header, language switch, tabs, sources
+## Task 6: Header, language switch, tabs, sources
 
 **Files:**
-- Modify: `assets/app.js` (append components; replace `App()` body)
+- Modify: `assets/app.js` — append components; replace `App()` body
 
-**Goal:** The masthead, folio, EN/RU switch, tab bar, and the `<details>` source list all render and behave correctly.
+**Goal:** Masthead, folio, tagline, EN/RU buttons, tab bar, and the `<details>` source list all render and behave.
 
-- [ ] **Step 1: Add the component definitions above `App`**
+- [ ] **Step 1: Add components above the current `const App = ...` definition**
 
-Insert the following in `app.js` above the existing `const App = ...` definition (and remove the placeholder `App` definition):
+Insert into `app.js`:
 
 ```js
 // ───────────── chrome components ─────────────
@@ -504,6 +607,11 @@ const sourceEntries = () => {
     .sort((a, b) => a.first.localeCompare(b.first) || a.src.localeCompare(b.src))
 }
 
+const jumpToRecord = (query) => {
+  state.tableSearch = query
+  state.activeTab = 'table'
+}
+
 const Sources = () => html`
   <details class="sources">
     <summary>
@@ -524,6 +632,24 @@ const Sources = () => html`
     </div>
   </details>
 `
+
+const Tabs = () => {
+  const tabs = [
+    ['summary', 'tab_summary'],
+    ['charts',  'tab_charts'],
+    ['table',   'tab_record'],
+  ]
+  return html`
+    <nav class="tabs" role="tablist">
+      ${tabs.map(([id, key]) => html`
+        <button class="tab ${() => state.activeTab === id ? 'active' : ''}"
+                @click="${() => { state.activeTab = id }}">
+          ${() => t(key)}
+        </button>
+      `.key(id))}
+    </nav>
+  `
+}
 
 const Header = () => html`
   <header>
@@ -551,29 +677,6 @@ const Header = () => html`
     </div>
   </header>
 `
-
-const Tabs = () => {
-  const tabs = [
-    ['summary', 'tab_summary'],
-    ['charts',  'tab_charts'],
-    ['table',   'tab_record'],
-  ]
-  return html`
-    <nav class="tabs" role="tablist">
-      ${tabs.map(([id, key]) => html`
-        <button class="tab ${() => state.activeTab === id ? 'active' : ''}"
-                @click="${() => { state.activeTab = id }}">
-          ${() => t(key)}
-        </button>
-      `.key(id))}
-    </nav>
-  `
-}
-
-const jumpToRecord = (query) => {
-  state.tableSearch = query
-  state.activeTab = 'table'
-}
 ```
 
 - [ ] **Step 2: Replace the placeholder `App()` with the chrome-only shell**
@@ -590,39 +693,44 @@ const App = () => html`
 `
 ```
 
-- [ ] **Step 3: Boot and verify in browser**
+- [ ] **Step 3: Boot and verify**
 
-Run `python3 scripts/serve.py --csv health_data.csv --no-open` and open `http://127.0.0.1:8765/`. Expected:
-- EN/RU switch visible top-right; clicking RU flips the masthead title, folio, tagline, tab labels to Russian.
-- Meta line shows reading count and date range.
-- Sources `<details>` expands and lists files.
-- Clicking a source file sets `state.activeTab = 'table'` (you'll see the placeholder change; real table arrives in Task 8).
+```bash
+python3 scripts/serve.py --csv health_data.csv --no-open
+```
+
+Open the browser. Expected:
+- Masthead renders title, folio, tagline, ornament, meta line.
+- EN/RU switch flips all chrome strings.
+- Tabs render, clicking changes `state.activeTab` (visible effect: placeholder section still shows, but tabs' active class updates).
+- Sources `<details>` expands, lists files with date ranges and reading counts.
+- Clicking a source → tab changes to table (placeholder).
 - Console: no errors.
 
-Stop the server with Ctrl+C.
+Ctrl+C.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add assets/app.js
-git commit -m "Arrow: header, language switch, tabs, sources list"
+git commit -m "Arrow: header, language switch, tabs, sources"
 ```
 
 ---
 
-## Task 6: Summary panel (priorities + latest-readings grid)
+## Task 7: Summary panel (priorities + latest-readings grid)
 
 **Files:**
-- Modify: `assets/app.js` (append components; update `App` to render summary panel when active)
+- Modify: `assets/app.js` — append components; update `App` to render summary panel when active
 
-**Goal:** At-a-glance tab renders priority cards (from recommendations data) and the grid of latest-reading cards. Clicking a card sets `state.detail` (wired to modal in Task 9).
+**Goal:** At-a-glance tab. Priorities section renders from `state.context.recommendations` (hidden when empty or missing). Latest-readings grid renders one card per test. Clicking a card sets `state.detail` (wired to modal in Task 10).
 
-- [ ] **Step 1: Add the summary helpers and components**
+- [ ] **Step 1: Add helpers and components**
 
-Append below the existing definitions:
+Append to `app.js`:
 
 ```js
-// ───────────── severity helpers ─────────────
+// ───────────── severity ─────────────
 
 const SEVERITY_RANK = { attention: 0, watch: 1, info: 2 }
 
@@ -636,7 +744,7 @@ const severityLabel = (sev) => {
 // ───────────── priorities ─────────────
 
 const priorityEntries = () => {
-  const recs = recommendationsForLang()
+  const recs = recommendationsContext()
   const byName = testsByName()
   const entries = []
   for (const [test, rec] of Object.entries(recs)) {
@@ -654,47 +762,47 @@ const priorityEntries = () => {
 
 const Priorities = () => html`
   ${() => priorityEntries().length === 0 ? '' : html`
-  <section class="priorities">
-    <div class="panel-head priorities-head">
-      <h2>${() => t('priorities_title')}</h2>
-      <p class="panel-sub">${() => t('priorities_sub')}</p>
-    </div>
-    <div class="priorities-list">
-      ${() => priorityEntries().map(({ test, rec, latest }) => {
-        const flag = latest.flag || ''
-        const hasRange = latest.reference_low != null || latest.reference_high != null
-        const rangeStr = hasRange
-          ? `${t('detail_range')} ${latest.reference_low ?? '—'}–${latest.reference_high ?? '—'}`
-          : ''
-        return html`
-          <article class="priority-card sev-${rec.severity}"
-                   @click="${() => { state.detail = test }}">
-            <div class="priority-top">
-              <span class="priority-name">${testLabel(test)}</span>
-              <span class="priority-sev sev-${rec.severity}">${severityLabel(rec.severity)}</span>
-            </div>
-            <div class="priority-meta">
-              <span class="priority-val">${fmt(latest.value)}<span class="unit">${latest.unit || ''}</span></span>
-              ${flag ? html`<span class="flag ${flag}">${flag}</span>` : ''}
-              ${rangeStr ? html`<span class="priority-range">${rangeStr}</span>` : ''}
-              <span class="priority-range">${latest.date}</span>
-            </div>
-            <p class="priority-headline">${rec.headline}</p>
-            <p class="priority-detail">${rec.detail}</p>
-            ${(rec.actions || []).length ? html`
-              <ul class="priority-actions">
-                ${(rec.actions || []).map((a) => html`<li>${a}</li>`)}
-              </ul>
-            ` : ''}
-          </article>
-        `.key(test)
-      })}
-    </div>
-    <p class="priorities-disclaimer">
-      <strong>${() => t('priorities_discl_strong')}</strong>
-      <span>${() => t('priorities_discl')}</span>
-    </p>
-  </section>
+    <section class="priorities">
+      <div class="panel-head priorities-head">
+        <h2>${() => t('priorities_title')}</h2>
+        <p class="panel-sub">${() => t('priorities_sub')}</p>
+      </div>
+      <div class="priorities-list">
+        ${() => priorityEntries().map(({ test, rec, latest }) => {
+          const flag = latest.flag || ''
+          const hasRange = latest.reference_low != null || latest.reference_high != null
+          const rangeStr = hasRange
+            ? `${t('detail_range')} ${latest.reference_low ?? '—'}–${latest.reference_high ?? '—'}`
+            : ''
+          return html`
+            <article class="priority-card sev-${rec.severity}"
+                     @click="${() => { state.detail = test }}">
+              <div class="priority-top">
+                <span class="priority-name">${testLabel(test)}</span>
+                <span class="priority-sev sev-${rec.severity}">${severityLabel(rec.severity)}</span>
+              </div>
+              <div class="priority-meta">
+                <span class="priority-val">${fmt(latest.value)}<span class="unit">${latest.unit || ''}</span></span>
+                ${flag ? html`<span class="flag ${flag}">${flag}</span>` : ''}
+                ${rangeStr ? html`<span class="priority-range">${rangeStr}</span>` : ''}
+                <span class="priority-range">${latest.date}</span>
+              </div>
+              <p class="priority-headline">${rec.headline}</p>
+              <p class="priority-detail">${rec.detail}</p>
+              ${(rec.actions || []).length ? html`
+                <ul class="priority-actions">
+                  ${(rec.actions || []).map((a) => html`<li>${a}</li>`)}
+                </ul>
+              ` : ''}
+            </article>
+          `.key(test)
+        })}
+      </div>
+      <p class="priorities-disclaimer">
+        <strong>${() => t('priorities_discl_strong')}</strong>
+        <span>${() => t('priorities_discl')}</span>
+      </p>
+    </section>
   `}
 `
 
@@ -776,9 +884,7 @@ const SummaryPanel = () => html`
 `
 ```
 
-- [ ] **Step 2: Update `App()` to swap panels**
-
-Replace the `<main>` section of `App()`:
+- [ ] **Step 2: Update `App()`**
 
 ```js
 const App = () => html`
@@ -794,34 +900,55 @@ const App = () => html`
 
 - [ ] **Step 3: Boot and verify**
 
-Run `python3 scripts/serve.py --csv health_data.csv --no-open` and open the URL.
+Without `health_context.json`:
+```bash
+python3 scripts/serve.py --csv health_data.csv --no-open
+```
 
 Expected:
-- **At a glance** tab is the default. The priorities section shows items drawn from `recommendations.en`/`.ru`; each card has a colored severity stripe matching the CSS class `sev-attention` / `sev-watch` / `sev-info`.
-- Below priorities: one card per test, with value, unit, date, delta vs. prior reading.
-- Clicking a card sets `state.detail` — verify in devtools console: `window.__appState` isn't defined, but you'll wire the modal in Task 9. For now, click doesn't do anything visible.
-- Switching to RU flips all priorities and summary strings, including card titles.
+- No priorities section (graceful hide).
+- Latest-readings grid renders, one card per test.
+- Flag badges appear on flagged cards.
+- Cards click (no visible effect yet — modal arrives in Task 10).
 - Console: no errors.
 
-Stop with Ctrl+C.
+Now add a context file with one recommendation and reload:
+
+```bash
+cat > health_context.json <<'EOF'
+{
+  "biomarkers": {},
+  "recommendations": {
+    "Hemoglobin": {
+      "severity": "watch",
+      "headline": "Sample priority",
+      "detail": "Renders only to verify the panel shows when context has recommendations.",
+      "actions": ["Action one", "Action two"]
+    }
+  }
+}
+EOF
+```
+
+Reload the browser — priorities section now appears with one card for Hemoglobin (only if Hemoglobin is actually in the CSV; pick any test name you know exists). Ctrl+C, `rm health_context.json`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add assets/app.js
-git commit -m "Arrow: summary panel — priorities and latest-readings grid"
+git commit -m "Arrow: summary panel — priorities (from context) and latest-readings grid"
 ```
 
 ---
 
-## Task 7: Charts panel (Chart.js via `watch()`)
+## Task 8: Charts panel
 
 **Files:**
-- Modify: `assets/app.js` (append components; update `App` charts slot)
+- Modify: `assets/app.js` — append components; update `App` charts slot
 
-**Goal:** Over-time tab renders one Chart.js line chart per test with reference-range band, category filter chips, empty state when nothing matches.
+**Goal:** Over-time tab renders one Chart.js line chart per test with reference-range band and category filter.
 
-- [ ] **Step 1: Add chart helpers, category filter, and the panel component**
+- [ ] **Step 1: Add helpers, category filter, panel component, and the chart watcher**
 
 Append to `app.js`:
 
@@ -830,12 +957,9 @@ Append to `app.js`:
 
 const getVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
-const themeChartDefaults = () => {
-  Chart.defaults.font.family = '"Spectral", "Source Serif 4", Georgia, serif'
-  Chart.defaults.font.size = 12
-  Chart.defaults.color = getVar('--ink-soft')
-}
-themeChartDefaults()
+Chart.defaults.font.family = '"Spectral", "Source Serif 4", Georgia, serif'
+Chart.defaults.font.size = 12
+Chart.defaults.color = getVar('--ink-soft')
 
 const pickTimeUnit = (dates) => {
   if (dates.length < 2) return 'day'
@@ -905,11 +1029,11 @@ const ChartsPanel = () => html`
   </section>
 `
 
-// ───────────── Chart.js lifecycle via watch ─────────────
+// ───────────── Chart.js lifecycle ─────────────
 
-const chartInstances = new Map()  // test_name -> Chart
+const chartInstances = new Map()   // test_name -> Chart
 
-const buildChartConfig = (name, series, lang) => {
+const buildChartConfig = (name, series) => {
   const rust     = getVar('--rust')
   const rustDeep = getVar('--rust-deep')
   const ink      = getVar('--ink')
@@ -1047,6 +1171,7 @@ watch(() => {
   const tab = state.activeTab
   const cat = state.categoryFilter
   const lang = state.lang
+  void rows; void cat; void lang   // silence unused-var tools; reads are intentional
 
   if (tab !== 'charts' || !rows.length) {
     chartInstances.forEach((c) => c.destroy())
@@ -1059,30 +1184,24 @@ watch(() => {
     const names = chartNames()
     const wanted = new Set(names)
 
-    // Destroy charts no longer visible
     for (const [name, inst] of chartInstances) {
       if (!wanted.has(name)) { inst.destroy(); chartInstances.delete(name) }
     }
 
-    // Create/recreate for visible charts
     for (const name of names) {
       const canvas = document.querySelector(`canvas[data-canvas="${CSS.escape(name)}"]`)
       if (!canvas) continue
       chartInstances.get(name)?.destroy()
-      const chart = new Chart(canvas, buildChartConfig(name, byName[name], lang))
+      const chart = new Chart(canvas, buildChartConfig(name, byName[name]))
       chartInstances.set(name, chart)
     }
   })
 })
 ```
 
-Notes for the engineer:
-- `queueMicrotask` defers until after Arrow finishes DOM updates, so `querySelector` finds the newly rendered canvases.
-- Destroy-and-recreate on language change is intentional — Chart.js labels are captured at construction and don't respond to reactive reads. Recreation is the simplest correct behavior.
+- [ ] **Step 2: Update `App()` charts slot**
 
-- [ ] **Step 2: Update `App()` to render the charts panel**
-
-Replace the charts placeholder line in `App()`:
+Replace the charts placeholder:
 
 ```js
 ${() => state.activeTab === 'charts' ? ChartsPanel() : ''}
@@ -1090,16 +1209,19 @@ ${() => state.activeTab === 'charts' ? ChartsPanel() : ''}
 
 - [ ] **Step 3: Boot and verify**
 
-Run the server and switch to the **Over time** tab. Expected:
-- One chart per test. X-axis uses time formatting, Y-axis shows values.
-- Reference range is a sage-colored band between low and high dashed lines; where only one bound is present, only that dashed line shows.
-- Category filter chips at top: clicking one narrows the chart list. "All" restores the full set.
-- Clicking a data point shows a tooltip with value, unit, flag, and source file.
-- Switching language redraws all charts; tooltip label "from" becomes Russian.
-- Switching to another tab destroys charts (no leaks). Switching back rebuilds them.
+```bash
+python3 scripts/serve.py --csv health_data.csv --no-open
+```
+
+Switch to **Over time**. Expected:
+- One chart per test, X-axis formatted as time, Y-axis numeric.
+- Reference range is a band between the two dashed lines (sage tint from `--band`); when only one bound exists, only that dashed line shows.
+- Category chips at top: clicking narrows the list; "All" restores.
+- Tooltip shows value + unit + flag + source file.
+- Leaving and returning to the tab recreates charts without errors.
 - Console: no errors.
 
-Stop with Ctrl+C.
+Ctrl+C.
 
 - [ ] **Step 4: Commit**
 
@@ -1110,16 +1232,14 @@ git commit -m "Arrow: charts panel with Chart.js lifecycle via watch()"
 
 ---
 
-## Task 8: Table panel (search + sortable columns)
+## Task 9: Table panel (search + sort)
 
 **Files:**
-- Modify: `assets/app.js` (append component; update `App` table slot)
-
-**Goal:** The Record tab renders the full CSV as a sortable, filterable table.
+- Modify: `assets/app.js` — append component; update `App` table slot
 
 - [ ] **Step 1: Add the table component**
 
-Append to `app.js`:
+Append:
 
 ```js
 // ───────────── table ─────────────
@@ -1214,9 +1334,7 @@ const TablePanel = () => html`
 `
 ```
 
-- [ ] **Step 2: Update `App()` to render the table panel**
-
-Replace the table placeholder line:
+- [ ] **Step 2: Update `App()` table slot**
 
 ```js
 ${() => state.activeTab === 'table' ? TablePanel() : ''}
@@ -1224,15 +1342,13 @@ ${() => state.activeTab === 'table' ? TablePanel() : ''}
 
 - [ ] **Step 3: Boot and verify**
 
-Run the server, switch to **The record** tab. Expected:
-- Every CSV row shows as a table row. Columns match current dashboard: date, test, value, unit, low, high, flag, category, source.
-- Clicking a column header sorts; clicking again flips asc/desc.
-- Typing in the search input filters rows to those with matching text (case-insensitive).
-- Clicking a file in the **Sources** `<details>` (see Task 5) populates the search box and switches to this tab.
-- RU language switches the test and category labels to Russian in the rendered cells, and re-applies to search matching.
+Expected:
+- Switch to **The record** — every CSV row renders.
+- Search input filters case-insensitively.
+- Column header clicks toggle sort; direction flips on second click.
+- Clicking a source in the `<details>` (Task 6) switches to this tab with the search populated.
+- Language switch flips column headers and test/category cell labels.
 - Console: no errors.
-
-Stop with Ctrl+C.
 
 - [ ] **Step 4: Commit**
 
@@ -1243,16 +1359,16 @@ git commit -m "Arrow: table panel with search and sortable columns"
 
 ---
 
-## Task 9: Detail modal
+## Task 10: Detail modal
 
 **Files:**
-- Modify: `assets/app.js` (append component; update `App` to include modal)
+- Modify: `assets/app.js` — append component; include modal in `App`
 
-**Goal:** Clicking a card or priority opens a `<dialog>` with the test's full history, description, interpretation, suggestions, and personalized recommendation.
+**Goal:** Clicking a card opens a `<dialog>` with the per-test history and — when the context JSON has them — biomarker info and personalized recommendation. Otherwise shows "no reference notes yet."
 
-- [ ] **Step 1: Add the detail-modal component**
+- [ ] **Step 1: Add the modal component and the open/close watcher**
 
-Append to `app.js`:
+Append:
 
 ```js
 // ───────────── detail modal ─────────────
@@ -1267,13 +1383,15 @@ const detailEntry = () => {
     name,
     series,
     latest: series[series.length - 1],
-    info: biomarkersForLang()[name] ?? null,
-    rec: recommendationsForLang()[name] ?? null,
+    info: biomarkersContext()[name] ?? null,
+    rec: recommendationsContext()[name] ?? null,
   }
 }
 
+const closeDetail = () => { state.detail = null }
+
 // Open/close the dialog when state.detail changes.
-// We use watch + microtask so Arrow has rendered the <dialog> element before we call showModal().
+// queueMicrotask ensures Arrow has rendered the <dialog> before we call showModal().
 watch(() => {
   const shouldOpen = state.detail != null
   queueMicrotask(() => {
@@ -1289,8 +1407,6 @@ watch(() => {
   })
 })
 
-const closeDetail = () => { state.detail = null }
-
 const DetailBody = (entry) => {
   const { name, series, latest, info, rec } = entry
   const flag = latest.flag || ''
@@ -1298,7 +1414,6 @@ const DetailBody = (entry) => {
   const rangeStr = hasRange
     ? `${t('detail_range')} ${latest.reference_low ?? '—'}..${latest.reference_high ?? '—'}`
     : t('detail_no_range')
-
   const hist = [...series].reverse()
   const readingsFn = strings[state.lang]?.detail_reading_n ?? ((n) => `${n} readings`)
   const noInfoFn = strings[state.lang]?.detail_no_info ?? ((n) => `No reference notes yet for "${n}".`)
@@ -1416,9 +1531,7 @@ const DetailModal = () => html`
 `
 ```
 
-- [ ] **Step 2: Include `DetailModal` in `App()`**
-
-Update `App()` so the modal renders at the root:
+- [ ] **Step 2: Include `DetailModal` in `App()` (and add colophon)**
 
 ```js
 const App = () => html`
@@ -1441,31 +1554,71 @@ const App = () => html`
 `
 ```
 
-- [ ] **Step 3: Boot and verify**
+- [ ] **Step 3: Boot and verify (without context)**
 
-Run the server. Expected:
-- Click a summary card → modal opens, showing test name, latest value, description, interpretation, suggestions, history table, and (if present) personalized recommendation.
-- Click a priority card → same modal.
-- Close via the ✕ button, clicking outside the dialog body, or pressing Escape (native `<dialog>` behavior).
-- After close, modal doesn't re-open on state change; clicking another card opens it again with the new test.
-- "View in the record" link closes the modal, switches to the table tab, and populates search with the test name.
-- RU: all modal strings switch.
-- Console: no errors.
+```bash
+python3 scripts/serve.py --csv health_data.csv --no-open
+```
 
-Stop with Ctrl+C.
+- Click any summary card → modal opens.
+- Header: category, test name, latest value + unit, flag, date, reference range.
+- No "recommendation" block.
+- About/interpret/suggest sections are replaced with "no reference notes yet" using the current language's formatter.
+- History table populated.
+- ✕, Escape, and clicking the backdrop all close the modal.
+- "View in the record" closes the modal and switches to the table tab with the search pre-populated.
 
-- [ ] **Step 4: Commit**
+Ctrl+C.
+
+- [ ] **Step 4: Boot and verify (with context)**
+
+Create a context file with both keys:
+
+```bash
+cat > health_context.json <<'EOF'
+{
+  "biomarkers": {
+    "Hemoglobin": {
+      "description": "Oxygen-carrying protein.",
+      "high": "Dehydration, smoking.",
+      "low":  "Anemia.",
+      "suggestions": ["Iron-rich food.", "Check ferritin and B12."]
+    }
+  },
+  "recommendations": {
+    "Hemoglobin": {
+      "severity": "watch",
+      "headline": "Trending near the lower edge",
+      "detail":   "Dropped from X to Y over Z months.",
+      "actions":  ["Recheck in 3 months.", "Add dietary iron."]
+    }
+  }
+}
+EOF
+
+python3 scripts/serve.py --csv health_data.csv --no-open
+```
+
+- Reload the browser.
+- Click a Hemoglobin summary card (replace with any test name present in both the CSV and your context file).
+- Modal now shows the recommendation block with severity color, headline, detail, actions.
+- Modal shows About / What changes it / Ways to move the needle sections.
+- Language flip changes chrome strings; the biomarker and recommendation prose stays in whatever language the JSON used.
+
+Ctrl+C, `rm health_context.json`.
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add assets/app.js
-git commit -m "Arrow: detail modal with per-test history and recommendations"
+git commit -m "Arrow: detail modal with per-test history and context-backed content"
 ```
 
 ---
 
-## Task 10: End-to-end verification
+## Task 11: End-to-end verification
 
-**Files:** none modified — run the full spec checklist and fix anything that fails.
+**Files:** none modified unless a regression is found.
 
 - [ ] **Step 1: Start the server**
 
@@ -1473,69 +1626,56 @@ git commit -m "Arrow: detail modal with per-test history and recommendations"
 python3 scripts/serve.py --csv health_data.csv
 ```
 
-Open `http://127.0.0.1:8765/`.
+Walk the spec verification list in the browser:
 
-- [ ] **Step 2: Walk the spec verification list**
+1. Dashboard loads with no console errors even when `health_context.json` is absent.
+2. Add a small `health_context.json` next to the CSV → reload → priorities panel appears, detail modal shows description / recommendations for keyed tests.
+3. **Summary tab** — priorities render (when present), one card per test, flag badges colored.
+4. **Charts tab** — one chart per test, reference-range band visible, category chips narrow the set.
+5. **Table tab** — search filters; column clicks toggle sort.
+6. **Language switch** — EN ⇄ RU flips UI chrome (titles, tabs, columns, ornaments, tooltip labels, test and category names). Biomarker and recommendation prose stay in their original language (expected).
+7. **Detail modal** — clicking a card opens; close button, Escape key, backdrop click all close.
+8. **Sources filter** — clicking a file filters the table.
+9. **Malformed context** — break `health_context.json` (`echo "bad json" > health_context.json`), reload: dashboard still works, priorities hidden, detail modal falls back to "no reference notes yet." Fix or delete the file afterward.
+10. **Reload after append** — run `append_to_csv.py` with a tiny additional reading, reload browser: new row appears in the table, chart updates for that test.
 
-For each item, confirm behavior; if broken, fix in `assets/app.js` and commit the fix separately.
-
-1. Page loads with no console errors.
-2. **Summary tab** — priorities render, one card per test, flags colored correctly.
-3. **Charts tab** — one chart per test, reference-range band visible, category filter chips switch what renders, empty-match shows the right message.
-4. **Table tab** — search filters, column headers toggle sort direction.
-5. **Language switch** — EN ⇄ RU flips *every* string: title, tagline, tab labels, chart axes (after reload/repaint), modal content, table column headers, category chip labels.
-6. **Detail modal** — clicking a card opens it, every section populates, close works, "View in the record" navigates correctly.
-7. **Sources filter** — clicking a file filters the table.
-8. **Reload after append** — run `python3 scripts/append_to_csv.py` with a small additional JSON input, then reload the browser; new rows appear.
-9. **Responsive** — shrink the window to phone width; charts and grid should still render without layout collapse (same as pre-migration).
-
-- [ ] **Step 3: Confirm the old `.ru.js` files are gone**
+- [ ] **Step 2: Confirm old files are gone**
 
 ```bash
-ls assets/biomarkers.ru.js assets/recommendations.ru.js 2>&1 || echo "both removed as expected"
+ls assets/biomarkers.js assets/biomarkers.ru.js assets/recommendations.js assets/recommendations.ru.js 2>&1 | grep -c "No such file"
 ```
-Expected output includes "No such file or directory" and "both removed as expected".
+Expected: `4`.
 
-- [ ] **Step 4: Confirm no `window.*` globals remain**
+- [ ] **Step 3: Confirm no `window.*` globals remain**
 
 ```bash
 grep -rn "window\.\(I18N\|TEST_NAMES_RU\|CATEGORIES_RU\|BIOMARKERS\|RECOMMENDATIONS\)" assets/
 ```
-Expected: no matches. (No output.)
+Expected: no output.
 
-- [ ] **Step 5: If any fixes were needed during Step 2, commit each separately**
-
-Example:
-```bash
-git add assets/app.js
-git commit -m "Fix: <short description of the regression>"
-```
-
-- [ ] **Step 6: Final commit sweep**
-
-If the working tree is clean, the migration is complete. Otherwise:
+- [ ] **Step 4: If any fixes were needed, commit each separately**
 
 ```bash
-git status
-git diff
+git add <paths>
+git commit -m "Fix: <specific regression>"
 ```
-
-Confirm everything is intentional, commit if needed.
 
 ---
 
-## Out of scope (do not implement)
+## Out of scope
 
-- Server-side rendering (`@arrow-js/ssr` / `@arrow-js/hydrate`).
+- SSR / hydration.
 - TypeScript or any build step.
 - Unit test infrastructure.
-- New features, visual redesign, or copy changes.
-- Changes to `scripts/serve.py`, `scripts/append_to_csv.py`, or the CSV schema.
+- Automated migration of the pre-existing `recommendations.js` content into `health_context.json`. Users who want their old content back regenerate it via the agent.
+- Changes to `scripts/append_to_csv.py` or the CSV schema.
 
 ## Done criteria
 
-- All ten tasks checked off.
-- `assets/biomarkers.ru.js` and `assets/recommendations.ru.js` are deleted.
+- All eleven tasks checked.
+- Four bundled content files deleted.
+- `scripts/serve.py` serves `context` in `/api/data`.
+- `SKILL.md` documents the context JSON workflow.
 - No `window.*` globals in `assets/`.
-- All nine verification bullets in Task 10 Step 2 pass.
-- The dashboard looks indistinguishable from the pre-migration version in both EN and RU modes.
+- Verification list in Task 11 Step 1 passes.
+- Dashboard looks indistinguishable from the pre-migration version when a context JSON matching the old content is present.

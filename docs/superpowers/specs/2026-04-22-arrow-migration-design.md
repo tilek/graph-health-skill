@@ -2,14 +2,14 @@
 
 ## Goal
 
-Replace the imperative vanilla-JS frontend in `assets/` with [Arrow](https://github.com/justin-schroeder/arrow-js)'s reactive template model, while preserving:
+Replace the imperative vanilla-JS frontend in `assets/` with [Arrow](https://github.com/justin-schroeder/arrow-js)'s reactive template model, **and** remove all bundled per-test reference content from the skill — agents generate it per-user at extraction time instead. Preserve:
 
 - The zero-install delivery story (no `pip install`, no `npm install`, no bundler).
-- The existing Python-stdlib server (`scripts/serve.py` untouched).
+- The existing Python-stdlib server (`scripts/serve.py` extended by one endpoint slice).
 - Visual parity with today's dashboard (same CSS, same look).
-- All current features: language switch, tabs, priorities, summary cards, charts, sortable table, detail modal, sources filter.
+- All current features: priorities, summary cards, charts, sortable table, detail modal, sources filter, EN/RU chrome.
 
-Less code than today is a goal, not a stretch target.
+Less code than today is an explicit goal. The four bundled content files (`biomarkers.js`, `biomarkers.ru.js`, `recommendations.js`, `recommendations.ru.js`) — about 2,200 lines combined — are deleted.
 
 ## Delivery mode
 
@@ -21,142 +21,211 @@ import { render } from 'https://esm.sh/@arrow-js/framework'
 import Chart from 'https://esm.sh/chart.js/auto'
 ```
 
-`index.html` contains a single `<script type="module" src="app.js"></script>`. No Vite, no `pnpm`, no SSR, no hydration. First page load still needs internet (same as Chart.js today); afterwards the browser caches the modules.
+`index.html` contains a single `<script type="module" src="app.js"></script>`. No Vite, no pnpm, no SSR, no hydration.
 
-## File layout
+## Data model
+
+### CSV (unchanged)
+
+Same schema, same `append_to_csv.py`, same location (user's workspace, typically `~/health/health_data.csv`).
+
+### Context JSON (new)
+
+A companion file, `health_context.json`, lives **in the same directory as the CSV** — in the user's workspace, not in the skill install. The agent writes it during extraction; the user's dashboard reads it.
+
+Shape:
+
+```json
+{
+  "biomarkers": {
+    "Hemoglobin": {
+      "description": "The oxygen-carrying protein inside red blood cells…",
+      "high": "Dehydration, smoking, high altitude…",
+      "low":  "Anemia — commonly iron deficiency…",
+      "suggestions": [
+        "If low: eat iron-rich foods…",
+        "Rule out hidden blood loss…"
+      ]
+    }
+  },
+  "recommendations": {
+    "Insulin": {
+      "severity": "attention",
+      "headline": "Fasting insulin has risen 5× — early insulin-resistance signal",
+      "detail":   "11.3 µIU/mL is still within range…",
+      "actions": [
+        "Add resistance training 3× per week…",
+        "Cut refined carbs…"
+      ]
+    }
+  }
+}
+```
+
+Rules:
+
+- **Single language.** Whichever language matches the user's data / preference. No `{ en, ru }` nesting.
+- **Keyed by canonical test name** — same keys used in the CSV's `test_name` column.
+- **Either top-level object may be missing or empty.** Consumer treats missing as "no content to show."
+- **Optional file.** If `health_context.json` doesn't exist, the dashboard still renders the CSV — priorities section hides, detail modal shows "no reference notes yet."
+
+### How the agent produces it
+
+`SKILL.md` instructs the agent to write `health_context.json` alongside the CSV during extraction. Step added after the current "Hand the rows to the CSV script":
+
+> After appending rows, regenerate `health_context.json` in the same directory as the CSV. Include a `biomarkers` entry for each distinct test in the CSV (general reference notes) and a `recommendations` entry for tests where the user's actual data warrants attention. Re-run whenever new readings land.
+
+Agents are told to keep it concise. Tests the user doesn't have can be omitted entirely. Biomarkers that have no actionable suggestions can also be omitted.
+
+## Server changes
+
+`scripts/serve.py` extends the existing `/api/data` endpoint:
+
+```
+GET /api/data  →  { rows: [...], csv_path: "...", context: {...} | null }
+```
+
+The server computes `context_path = csv_path.parent / "health_context.json"`. If the file exists, it parses it as JSON and returns it under `context`. If missing or unparseable, `context: null` and a log line warns. Reads on every request so users can re-run the agent and reload the page without restarting the server — same mechanic as the CSV.
+
+No new endpoint, no new CLI flag, no new dependencies.
+
+## File layout (assets)
 
 ```
 assets/
   index.html          # minimal shell: <div id="app"></div>
-  app.js              # Arrow templates, reactive state, data fetch, chart integration
-  i18n.js             # export { strings, formatters }
-  biomarkers.js       # export const biomarkers = { en: {...}, ru: {...} }
-  recommendations.js  # export const rules = { en: [...], ru: [...] }
+  app.js              # Arrow templates, reactive state, data+context fetch, charts
+  i18n.js             # export { strings, testNamesRu, categoriesRu }
   styles.css          # unchanged
 ```
 
-Changes from today:
+Deleted:
+- `assets/biomarkers.js`
+- `assets/biomarkers.ru.js`
+- `assets/recommendations.js`
+- `assets/recommendations.ru.js`
 
-- `biomarkers.js` + `biomarkers.ru.js` → one `biomarkers.js` with `{ en, ru }`. Same for `recommendations.js`.
-- All five JS files become ESM modules — `import` / `export`, no window globals.
-- `index.html` drops all inline DOM scaffolding and every `data-i18n` attribute. Arrow renders the whole app.
+`i18n.js` keeps only UI chrome: titles, taglines, tab labels, column headers, empty-state copy, date-label formatters, and the `TEST_NAMES_RU` / `CATEGORIES_RU` lookups for translating test and category names in the UI. Nothing per-test-content.
 
 ## Reactive state
 
-One root `reactive()` object drives the UI:
-
 ```js
 const state = reactive({
-  lang: 'en',                          // 'en' | 'ru'
-  rows: [],                            // raw CSV rows from /api/data
+  lang: 'en',                          // 'en' | 'ru' — UI chrome only
+  rows: [],                            // CSV rows
   csvPath: '',
+  context: null,                       // { biomarkers, recommendations } | null
   activeTab: 'summary',                // 'summary' | 'charts' | 'table'
-  categoryFilter: null,                // null = all categories
+  categoryFilter: 'All',
   tableSearch: '',
   tableSort: { col: 'date', dir: 'desc' },
-  sourceFilter: null,                  // filename, or null
-  detail: null,                        // { testName } when modal open
+  detail: null,                        // test name when modal open
 })
 ```
 
-Derived values (latest-per-test, priorities, filtered/sorted table rows) are plain functions of `state`, called lazily inside `${() => ...}` template expressions so Arrow tracks the reads.
-
-Language switching is `state.lang = 'ru'`. Every translated string is `${() => t(key, state.lang)}`. No DOM walking, no `applyI18n()`.
+Derived values (latest-per-test, priorities, filtered table rows) are plain functions read lazily inside `${() => ...}` template expressions.
 
 ## Rendering structure
 
-One top-level `App()` component, a handful of sub-components, all in `app.js`:
+One root `App()`, a handful of sub-components, all in `app.js`:
 
 ```js
 const App = () => html`
-  ${LangSwitch(state)}
-  ${Header(state)}
-  ${Tabs(state)}
+  ${LangSwitch()}
+  ${Header()}
   <main class="wrap">
-    ${() => state.activeTab === 'summary' ? SummaryPanel(state) : ''}
-    ${() => state.activeTab === 'charts'  ? ChartsPanel(state)  : ''}
-    ${() => state.activeTab === 'table'   ? TablePanel(state)   : ''}
-    ${Colophon(state)}
+    ${() => state.activeTab === 'summary' ? SummaryPanel() : ''}
+    ${() => state.activeTab === 'charts'  ? ChartsPanel()  : ''}
+    ${() => state.activeTab === 'table'   ? TablePanel()   : ''}
+    ${Colophon()}
   </main>
-  ${DetailModal(state)}
+  ${DetailModal()}
 `
-
-render(document.getElementById('app'), App())
 ```
 
 Sub-components:
 
-- `LangSwitch` — EN/RU buttons, set `state.lang`.
-- `Header` — masthead, meta line, sources `<details>` (click to set `state.sourceFilter`).
-- `Tabs` — three buttons, set `state.activeTab`.
-- `SummaryPanel` — priorities list + latest-readings grid. Card click sets `state.detail`.
-- `ChartsPanel` — category filter chips + one chart card per test.
-- `TablePanel` — search input + sortable table. Column header click updates `state.tableSort`.
-- `DetailModal` — native `<dialog>`, shown when `state.detail !== null`. Includes history, description, recommendations.
+- `LangSwitch` — EN/RU buttons; flips UI chrome only.
+- `Header` — masthead, meta line, sources `<details>`.
+- `Tabs` — three buttons; `state.activeTab`.
+- `SummaryPanel` — priorities list (hidden if `state.context?.recommendations` is empty) + latest-readings grid.
+- `ChartsPanel` — category chips + one chart card per test.
+- `TablePanel` — search + sortable table.
+- `DetailModal` — per-test history + (if present in context) biomarker info + recommendation.
 
 ## Chart.js integration
 
-Each chart card renders `<canvas>` through `html`. A `watch()` creates the Chart instance once the canvas is mounted and destroys/recreates it when inputs change (rows, language, category filter).
+Each chart card renders a `<canvas data-canvas="TestName">` in its template. A single `watch()` in `app.js` tracks `state.rows`, `state.lang`, `state.categoryFilter`, and `state.activeTab`; when any change, it queues a microtask, finds each visible canvas by selector, destroys the prior Chart instance, and creates a new one. Simplest correct integration; no per-card watchers.
 
-```js
-const ChartCard = (testName) => {
-  let chart = null
-  let canvas = null
-  const ref = (el) => { canvas = el }
-  watch(() => {
-    const data = seriesFor(state.rows, testName)
-    const labels = chartLabels(state.lang)
-    if (!canvas) return
-    chart?.destroy()
-    chart = new Chart(canvas, buildConfig(data, labels))
-  })
-  return html`<div class="chart-card"><canvas @ref="${ref}"></canvas></div>`
-}
-```
+## Language switch — scope reduction
 
-(Exact ref-callback syntax follows Arrow's conventions — confirmed during implementation against `.arrow-js/skill/api.md`.)
+Today's app re-renders every string (including biomarker descriptions and recommendations) on `state.lang` change. After this migration, the language switch only flips:
 
-One watcher per chart card — lifecycle is tied to the card being in the DOM.
+- UI chrome strings (titles, tab labels, meta line, column headers, tooltip `from` label, etc.)
+- Test-name display (`TEST_NAMES_RU` lookup) and category-name display (`CATEGORIES_RU`)
 
-## Data flow
+Biomarker descriptions and recommendations render in whatever language the agent wrote — no translation layer.
+
+## Fetch flow
 
 On startup:
 
 ```js
 const res = await fetch('/api/data')
-const { rows, csv_path } = await res.json()
-state.rows = rows
+const { rows, csv_path, context } = await res.json()
+state.rows = rows.map(parseRow)
 state.csvPath = csv_path
+state.context = context ?? null
 ```
 
-That's the whole data flow. No polling. The server reads the CSV on every request, so users reload the page to pick up new rows — same as today.
+One request, both payloads.
+
+## SKILL.md updates
+
+Two edits:
+
+1. **Pipeline diagram** — add the context file:
+   ```
+   source(s) ──► agent normalizes ──► append_to_csv.py ──► health_data.csv
+                                  ╰─► agent writes ────► health_context.json ─┐
+                                                                              ▼
+                                                             scripts/serve.py ► dashboard
+   ```
+
+2. **New step 4a** ("Write the context JSON") between "Hand the rows to the CSV script" and "Launch the dashboard," with format spec and example. The step explains:
+   - Where to write (same directory as the CSV)
+   - What shape (the JSON schema above)
+   - When to re-run (whenever new rows land)
+   - That the file is optional (no context = dashboard skips those sections)
+   - Reminder to keep content concise — tokens matter
 
 ## What stays the same
 
-- `scripts/serve.py` — unchanged.
 - `scripts/append_to_csv.py` — unchanged.
 - CSV schema — unchanged.
-- `assets/styles.css` — unchanged. Every class name and DOM structure the CSS targets is reproduced by Arrow templates.
-- Fonts, CDN font loading, Chart.js visual output — unchanged.
+- `assets/styles.css` — unchanged. All CSS classes referenced are reproduced by the Arrow templates.
+- Fonts, Chart.js visual output — unchanged.
 
 ## Out of scope
 
-- SSR / hydration (`@arrow-js/ssr`, `@arrow-js/hydrate`) — no SEO benefit for a private local dashboard.
-- TypeScript — project is plain JS today; no reason to introduce a compile step.
-- Tests — project has no test infrastructure; verification stays manual-in-browser.
-- Design changes. Visual output should be indistinguishable from today.
+- SSR / hydration.
+- TypeScript or any build step.
+- Unit tests (project has no test infrastructure).
+- Design changes. Dashboard should look indistinguishable in EN mode.
+- Migrating existing user `recommendations.js` content into `health_context.json` automatically. If a user still wants their prior content, they (or the agent in a fresh extraction) writes it into the new format.
 
 ## Verification
 
-Run manually after migration:
+Manual, in-browser, after migration:
 
-1. `python3 scripts/serve.py --csv health_data.csv` boots; page loads with no console errors.
-2. **Summary tab**: priorities render, one card per test in the grid, flags (`H`/`L`/`N`) colored correctly.
-3. **Charts tab**: one chart per test, reference-range band visible, category filter switches what renders.
-4. **Table tab**: search filters rows, clicking a column header toggles sort direction.
-5. **Language switch**: EN ⇄ RU flips every string — titles, taglines, tab labels, chart axes, modal content. No residual strings in the other language.
-6. **Detail modal**: clicking a summary card opens it; history table, description, recommendations populate; close works.
-7. **Sources filter**: clicking a file in the sources `<details>` filters the table to that file.
-8. After `append_to_csv.py` adds new rows, a browser reload picks them up.
+1. Fresh workspace with only `health_data.csv` (no `health_context.json`): `python3 scripts/serve.py --csv health_data.csv` boots; dashboard loads; priorities section hidden; detail modal shows "no reference notes yet" for every test.
+2. Add a `health_context.json` next to the CSV with a couple of biomarkers and one recommendation: reload the browser — priorities section appears; detail modal now shows description, high/low, suggestions, and personalized recommendation for those entries.
+3. **Summary tab**: one card per test, flags colored correctly, priority cards visible when recommendations exist.
+4. **Charts tab**: one chart per test, reference-range band visible, category filter works.
+5. **Table tab**: search filters, column headers sort.
+6. **Language switch**: EN ⇄ RU flips UI chrome — titles, tabs, columns, meta, ornament labels, tooltip "from" — and test-name/category display. Biomarker descriptions and recommendations stay in their original language (expected).
+7. **Detail modal**: clicking a summary card opens it; history populates; description/recommendations appear only when present in context.
+8. **Sources filter**: clicking a file in the sources `<details>` switches to the table tab with that file pre-searched.
+9. **Malformed `health_context.json`** (invalid JSON): server logs a warning, endpoint returns `context: null`, dashboard still works.
 
-No regressions vs. today's dashboard.
+No regressions vs. today's dashboard (when a context JSON is present).
