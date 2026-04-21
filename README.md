@@ -22,7 +22,7 @@ Visually the dashboard is set in *Instrument Serif* + *Spectral* on a warm paper
 Drop this directory into a place where your tooling can find skills. For Claude Code user-level skills:
 
 ```bash
-git clone git@github.com:tilek/graph-health-skill.git ~/.claude/skills/graph-health-skill
+git clone https://github.com/tilek/graph-health-skill.git ~/.claude/skills/graph-health-skill
 ```
 
 Or symlink a working copy:
