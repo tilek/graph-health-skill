@@ -42,7 +42,21 @@ def make_handler(csv_path: Path):
             if csv_path.exists():
                 with csv_path.open(newline="") as f:
                     rows = list(csv.DictReader(f))
-            body = json.dumps({"rows": rows, "csv_path": str(csv_path)}).encode("utf-8")
+
+            context = None
+            context_path = csv_path.parent / "health_context.json"
+            if context_path.exists():
+                try:
+                    with context_path.open() as f:
+                        context = json.load(f)
+                except (OSError, json.JSONDecodeError) as exc:
+                    print(f"  warning: could not read {context_path}: {exc}")
+
+            body = json.dumps({
+                "rows": rows,
+                "csv_path": str(csv_path),
+                "context": context,
+            }).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
