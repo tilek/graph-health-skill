@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The Health Ledger</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Spectral:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+<div class="paper-grain" aria-hidden="true"></div>
+<header>
+  <div class="wrap">
+    <div class="masthead">
+      <div class="folio">
+        <span class="folio-no">№ 001</span>
+        <span class="folio-sep">·</span>
+        <span class="folio-kind">Private record</span>
+      </div>
+      <h1 class="title">The Health <em>Ledger</em></h1>
+      <p class="tagline">A personal register of laboratory findings, kept <em>in the order in which they arrived</em>.</p>
+      <div class="ornament" aria-hidden="true">❧</div>
+      <p id="meta" class="meta"></p>
+      <details class="sources" id="sources">
+        <summary>Sources <span class="sources-count" id="sources-count"></span></summary>
+        <div class="sources-body">
+          <p class="sources-intro">Every reading is pulled directly from one of these files. Click a row to filter the record view to readings from that file.</p>
+          <ul id="sources-list"></ul>
+        </div>
+      </details>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-target="summary">At a glance</button>
+      <button class="tab" data-target="charts">Over time</button>
+      <button class="tab" data-target="table">The record</button>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+  <section id="summary" class="panel active">
+    <section id="priorities" class="priorities" hidden>
+      <div class="panel-head priorities-head">
+        <h2>What deserves your attention</h2>
+        <p class="panel-sub">Tests that are flagged, drifting toward a threshold, or part of a pattern with other readings. Click any item to read the full note.</p>
+      </div>
+      <div id="priorities-list" class="priorities-list"></div>
+      <p class="priorities-disclaimer"><strong>Not medical advice.</strong> These are pattern-spotting notes drawn from your actual readings and standard clinical references. Bring them to your doctor for interpretation.</p>
+    </section>
+    <div class="panel-head">
+      <h2>Latest readings</h2>
+      <p class="panel-sub">Most recent value per test, with the change from the reading before.</p>
+    </div>
+    <div id="summary-grid" class="grid"></div>
+  </section>
+  <section id="charts" class="panel">
+    <div class="panel-head">
+      <h2>Over time</h2>
+      <p class="panel-sub">Each line charts one test. The sage wash marks the reference range.</p>
+    </div>
+    <div id="category-filter" class="filter"></div>
+    <div id="chart-container"></div>
+  </section>
+  <section id="table" class="panel">
+    <div class="panel-head">
+      <h2>The record</h2>
+      <p class="panel-sub">Every entry as it lives in <code>health_data.csv</code>. Click a column to sort.</p>
+    </div>
+    <div class="table-controls">
+      <input id="table-search" type="search" placeholder="Search the record…">
+    </div>
+    <div class="table-scroll">
+      <table id="data-table">
+        <thead><tr></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+  <footer class="colophon">
+    <span class="ornament">❦</span>
+    <p>Set in <em>Instrument Serif</em> &amp; <em>Spectral</em>. Kept locally, read only by you.</p>
+  </footer>
+</main>
+<dialog id="detail" class="detail-modal">
+  <form method="dialog" class="detail-close-form">
+    <button class="detail-close" aria-label="Close">✕</button>
+  </form>
+  <article class="detail-body">
+    <header class="detail-head">
+      <p class="detail-eyebrow" id="detail-category"></p>
+      <h2 id="detail-name"></h2>
+      <div class="detail-latest" id="detail-latest"></div>
+    </header>
+    <div class="detail-rec" id="detail-rec" hidden>
+      <div class="detail-rec-top">
+        <span class="detail-rec-label" id="detail-rec-label"></span>
+      </div>
+      <p class="detail-rec-headline" id="detail-rec-headline"></p>
+      <p class="detail-rec-detail" id="detail-rec-detail"></p>
+      <ul class="detail-rec-actions" id="detail-rec-actions"></ul>
+    </div>
+    <section class="detail-section" id="detail-about">
+      <h3>What it is</h3>
+      <p id="detail-desc"></p>
+    </section>
+    <section class="detail-section" id="detail-interpret">
+      <h3>What changes it</h3>
+      <dl id="detail-interpret-body"></dl>
+    </section>
+    <section class="detail-section" id="detail-suggest">
+      <h3>Ways to move the needle</h3>
+      <ul id="detail-suggestions"></ul>
+    </section>
+    <p class="detail-disclaimer" id="detail-disclaimer">
+      <strong>Not medical advice.</strong> These are general educational notes drawn from standard clinical references. Your personal results should be interpreted by your doctor alongside your history, medications, and other readings.
+    </p>
+    <section class="detail-section detail-history">
+      <h3>Your readings <span class="detail-history-count" id="detail-history-count"></span></h3>
+      <div class="detail-history-scroll">
+        <table id="detail-history-table">
+          <thead><tr><th>Date</th><th>Value</th><th>Flag</th><th>Source</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+    <footer class="detail-foot">
+      <button class="detail-record-link" id="detail-view-record">View in the record →</button>
+    </footer>
+  </article>
+</dialog>
+<script src="biomarkers.js"></script>
+<script src="recommendations.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
