@@ -29,7 +29,7 @@ Pick the right tool for the format. The key move with any format is the same: **
 
 ### PDF lab reports
 
-Use the `Read` tool on the PDF. Claude gets both the rendered text and the layout. Works great for most commercial-lab printouts (Quest, LabCorp, AquaLab, clinic reports). Jump to the layout-specific sections below (Tabular, Two-column, etc.) for the actual extraction patterns.
+Use the `Read` tool on the PDF. The agent gets both the rendered text and the layout. Works great for most commercial-lab printouts (Quest, LabCorp, AquaLab, clinic reports). Jump to the layout-specific sections below (Tabular, Two-column, etc.) for the actual extraction patterns.
 
 ### xlsx / xls spreadsheets
 
@@ -90,7 +90,7 @@ Sometimes the user pastes a block of text from a patient portal or a legacy prin
 
 ### Images / screenshots / scanned PDFs
 
-Claude can read images directly via `Read`. Works well for clean screenshots of a portal page. Fails on low-resolution photos, lots of glare, or pages where the text is tilted. If you see `Read` returning garbled output or you're uncertain about any value, tell the user — don't guess.
+The agent can read images directly via `Read`. Works well for clean screenshots of a portal page. Fails on low-resolution photos, lots of glare, or pages where the text is tilted. If you see `Read` returning garbled output or you're uncertain about any value, tell the user — don't guess.
 
 Scanned PDFs (PDF containing only an image, no text layer) behave like images. Same caveat.
 

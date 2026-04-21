@@ -31,10 +31,10 @@ The skill is format-agnostic: the only thing that matters is that the final rows
 ## The workflow in one picture
 
 ```
-source(s) ──► Claude normalizes ──► scripts/append_to_csv.py ──► health_data.csv ──► scripts/serve.py ──► browser dashboard
+source(s) ──► agent normalizes ──► scripts/append_to_csv.py ──► health_data.csv ──► scripts/serve.py ──► browser dashboard
 ```
 
-Claude does the format-specific parsing and unit normalization (that's the part that needs judgment). The two Python scripts handle the deterministic parts: idempotent CSV updates and serving the dashboard. The frontend (`assets/index.html`, `assets/app.js`) reads the CSV via an HTTP endpoint and renders it with Chart.js.
+The agent (Claude Code, OpenCode, Codex, etc. — anything that speaks the agent-skills spec) does the format-specific parsing and unit normalization. That's the part that needs judgment. The two Python scripts handle the deterministic parts: idempotent CSV updates and serving the dashboard. The frontend (`assets/index.html`, `assets/app.js`) reads the CSV via an HTTP endpoint and renders it with Chart.js.
 
 ## Step-by-step
 
@@ -50,11 +50,11 @@ If the current working directory is the skill's own directory (i.e. you're being
 
 Use the tool appropriate to the format:
 
-- **PDF** — `Read` tool. Claude reads the rendered text + layout.
+- **PDF** — `Read` tool. The agent reads the rendered text + layout.
 - **xlsx / xls** — pandas via `uv run --with pandas --with openpyxl python3 ...` (inline-deps; no global install). `pd.read_excel(path, sheet_name=None)` to inspect all sheets.
 - **csv / tsv** — `Read` tool for small files, or pandas for big ones.
 - **json** — `Read` tool; shape varies per source, so understand the schema before mapping.
-- **Photo / screenshot / scanned PDF** — Claude can read images directly with `Read`. If the image is low-resolution or OCR-quality is poor, tell the user rather than guess.
+- **Photo / screenshot / scanned PDF** — The agent can read images directly with `Read`. If the image is low-resolution or OCR-quality is poor, tell the user rather than guess.
 
 For each source, extract these per-row fields:
 

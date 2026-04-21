@@ -1,8 +1,10 @@
 # graph-health-skill
 
-A [Claude Code](https://docs.claude.com/en/docs/claude-code) skill that ingests medical lab data from **any** source — PDF reports, xlsx / csv exports from platforms like WellnessFX or Function Health, JSON exports, plain text pasted from a patient portal, even screenshots of results — and turns it into a longitudinal CSV plus a local dashboard that plots every biomarker over time with reference ranges, provenance, and personalized notes.
+An [agent skill](https://agentskills.io) that ingests medical lab data from **any** source — PDF reports, xlsx / csv exports from platforms like WellnessFX or Function Health, JSON exports, plain text pasted from a patient portal, even screenshots of results — and turns it into a longitudinal CSV plus a local dashboard that plots every biomarker over time with reference ranges, provenance, and personalized notes.
 
-Claude does the unstructured-data parsing. Two small Python scripts handle the deterministic parts: writing to a CSV and serving the dashboard.
+Works with [Claude Code](https://docs.claude.com/en/docs/claude-code), [OpenCode](https://opencode.ai), [Codex](https://github.com/openai/codex), and every other [agent-skills](https://agentskills.io)-compatible agent — the skill format is the same across them.
+
+Your agent does the unstructured-data parsing. Two small Python scripts handle the deterministic parts: writing to a CSV and serving the dashboard.
 
 ## What the dashboard gives you
 
@@ -21,44 +23,55 @@ Visually the dashboard is set in *Instrument Serif* + *Spectral* on a warm paper
 
 ### Recommended: [`npx skills`](https://github.com/vercel-labs/skills) (Vercel Labs)
 
-One command, works with Claude Code and 40+ other agents:
+One command, works for Claude Code, OpenCode, Codex, and 40+ other agents:
 
 ```bash
+# Install for a specific agent
 npx skills add -g -a claude-code tilek/graph-health-skill
+npx skills add -g -a opencode    tilek/graph-health-skill
+npx skills add -g -a codex       tilek/graph-health-skill
+
+# Install for multiple at once
+npx skills add -g -a claude-code -a opencode -a codex tilek/graph-health-skill
+
+# Install for every agent you have locally
+npx skills add -g tilek/graph-health-skill
 ```
 
-- `-g` installs globally (user-level, available in every project)
-- `-a claude-code` targets Claude Code specifically (drop it to install for every agent you have)
-- Omit `-g` to install as a project-local skill under the current working directory
+- `-g` installs globally (user-level, available in every project). Omit `-g` to install as a project-local skill under the current working directory.
+- `-a <agent>` targets a specific agent; omit to install everywhere.
 
 You can also pass the full URL (`https://github.com/tilek/graph-health-skill`) or a `git@…` SSH URL.
 
 ### Alternative: manual git clone
 
-If you don't want `npx skills`, clone into the Claude Code skills directory yourself:
+If you don't want `npx skills`, clone into your agent's skills directory:
 
 ```bash
+# Claude Code
 git clone https://github.com/tilek/graph-health-skill.git ~/.claude/skills/graph-health-skill
+
+# OpenCode
+git clone https://github.com/tilek/graph-health-skill.git ~/.config/opencode/skills/graph-health-skill
+
+# Codex
+git clone https://github.com/tilek/graph-health-skill.git ~/.codex/skills/graph-health-skill
 ```
 
-Or symlink a working copy:
+Check your agent's docs for the exact skills path if it differs. You can also symlink a working copy into any of these locations.
 
-```bash
-ln -s "$PWD" ~/.claude/skills/graph-health-skill
-```
-
-Either way, the skill activates when Claude detects a health-data request (lab report, blood work, biomarker tracking, etc.).
+Either way, the skill activates when your agent detects a health-data request (lab report, blood work, biomarker tracking, etc.).
 
 ## Where your data lives
 
 The install path above (`~/.claude/skills/graph-health-skill`) is where the skill's *code* lives — SKILL.md, scripts, the dashboard frontend. **It is not where your CSV goes.**
 
-Your `health_data.csv` lives in whatever directory you're working in when you ask Claude to ingest a report. The skill writes to `health_data.csv` in the current working directory by default. A common pattern:
+Your `health_data.csv` lives in whatever directory you're working in when you ask your agent to ingest a report. The skill writes to `health_data.csv` in the current working directory by default. A common pattern:
 
 ```bash
 mkdir -p ~/health
 cd ~/health
-# From inside this folder, ask Claude to ingest your lab reports.
+# From inside this folder, ask your agent to ingest your lab reports.
 # The skill creates ~/health/health_data.csv, and runs the dashboard
 # serving that file — entirely separate from the skill install.
 ```
@@ -86,32 +99,34 @@ Either way, your health data is in a completely separate location (your workspac
 
 If a manual `git pull` reports local changes, you've tweaked a skill file (e.g. added entries to `biomarkers.js` or `references/test-names.md`). Stash them first (`git stash`), pull, then reapply (`git stash pop`) — or fork the repo if you're maintaining a significantly customized version.
 
-After an update that changes `recommendations.js`, regenerate your personalized notes by asking Claude something like *"the skill was updated; regenerate my personalized recommendations from `health_data.csv`"*. Those notes reference your actual values, so they should be rebuilt whenever either the data or the skill's analysis logic changes.
+After an update that changes `recommendations.js`, regenerate your personalized notes by asking your agent something like *"the skill was updated; regenerate my personalized recommendations from `health_data.csv`"*. Those notes reference your actual values, so they should be rebuilt whenever either the data or the skill's analysis logic changes.
 
 ## Using it — a typical session
 
 ```
 you:     (in ~/health)
          I have my blood work at ~/Downloads/2026-04-02 lab.pdf. Ingest it.
-Claude:  [reads the PDF, extracts 24 rows]
+agent:   [reads the PDF, extracts 24 rows]
          Wrote 24 rows to ~/health/health_data.csv. Six are out of range:
          Vitamin D (73.9 nmol/L), RBC (5.81), ...
          Starting the dashboard at http://127.0.0.1:8765/.
 
 you:     Also add ~/Downloads/wellnessfx_export.xlsx — it's a decade of history.
-Claude:  [reads the xlsx, normalizes 77 markers, converts units to match
+agent:   [reads the xlsx, normalizes 77 markers, converts units to match
          existing CSV, dedupes, appends 427 rows]
          496 readings total now. Refresh your browser.
 ```
 
+The transcript above is agent-agnostic — Claude Code, OpenCode, and Codex all handle this flow the same way, because they all implement the same agent-skills spec.
+
 ### Supported sources
 
-- **PDF** — Claude reads via the `Read` tool (rendered text + layout)
+- **PDF** — the agent reads via the `Read` tool (rendered text + layout)
 - **xlsx / xls** — via `pandas` + `openpyxl`, typically invoked inline with `uv run --with pandas --with openpyxl`
 - **CSV / TSV** — `Read` tool or `pandas`
 - **JSON** — including FHIR `Observation` resources
 - **Plain text** — pasted from a patient portal, OCR output, etc.
-- **Photos / screenshots** — Claude reads images directly; fails gracefully on low-resolution scans
+- **Photos / screenshots** — the agent reads images directly; fails gracefully on low-resolution scans
 - **Wearables** — Apple Health `export.xml`, Oura / Whoop CSV exports (filtered to one reading per day)
 
 The skill normalizes test names across sources ("HGB", "Hb", `Гемоглобин (HGB)` → `Hemoglobin`) and converts between US units (mg/dL, ng/dL, g/dL) and SI units (mmol/L, µmol/L, nmol/L, g/L) so the same test charts as a single continuous series even when the source labs use different conventions.
@@ -151,7 +166,7 @@ This is the tree inside the skill install directory. Your health data is *not* h
 
 ```
 graph-health-skill/
-├── SKILL.md                      # main skill instructions for Claude
+├── SKILL.md                      # main skill instructions (read by the agent)
 ├── README.md                     # this file
 ├── scripts/
 │   ├── append_to_csv.py          # idempotent CSV writer with dedup + flag computation
@@ -189,7 +204,7 @@ Extraction from spreadsheets uses `pandas` + `openpyxl`. The preferred invocatio
 - **New biomarker alias or canonical name** → add to [`references/test-names.md`](references/test-names.md)
 - **New source format** → add a section to [`references/extraction-guide.md`](references/extraction-guide.md)
 - **New biomarker reference note** → add an entry to [`assets/biomarkers.js`](assets/biomarkers.js) keyed by the canonical test name
-- **Regenerating personalized recommendations** → ask Claude; the notes in [`assets/recommendations.js`](assets/recommendations.js) reference specific values and should be refreshed whenever new data lands
+- **Regenerating personalized recommendations** → ask your agent; the notes in [`assets/recommendations.js`](assets/recommendations.js) reference specific values and should be refreshed whenever new data lands
 
 ## License
 
