@@ -353,6 +353,251 @@ const SummaryPanel = () => html`
   </section>
 `
 
+// ───────────── Chart.js theme bootstrap ─────────────
+
+const getVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+
+Chart.defaults.font.family = '"Spectral", "Source Serif 4", Georgia, serif'
+Chart.defaults.font.size = 12
+Chart.defaults.color = getVar('--ink-soft')
+
+const pickTimeUnit = (dates) => {
+  if (dates.length < 2) return 'day'
+  const first = new Date(dates[0]).getTime()
+  const last = new Date(dates[dates.length - 1]).getTime()
+  const spanDays = (last - first) / 86400000
+  if (spanDays > 365 * 2) return 'year'
+  if (spanDays > 90) return 'month'
+  return 'day'
+}
+
+// ───────────── category filter ─────────────
+
+const categoryList = () => {
+  const cats = [...new Set(state.rows.map((r) => r.category).filter(Boolean))].sort()
+  cats.unshift('All')
+  return cats
+}
+
+const CategoryFilter = () => html`
+  <div class="filter">
+    ${() => categoryList().map((c) => html`
+      <button class="chip ${() => state.categoryFilter === c ? 'active' : ''}"
+              @click="${() => { state.categoryFilter = c }}">
+        ${() => catLabel(c)}
+      </button>
+    `.key(c))}
+  </div>
+`
+
+// ───────────── charts ─────────────
+
+const chartNames = () => {
+  const byName = testsByName()
+  return Object.keys(byName)
+    .filter((n) => state.categoryFilter === 'All' || byName[n][0].category === state.categoryFilter)
+    .sort((a, b) => testLabel(a).localeCompare(testLabel(b), state.lang === 'ru' ? 'ru' : 'en'))
+}
+
+const ChartsPanel = () => html`
+  <section class="panel active">
+    <div class="panel-head">
+      <h2>${() => t('charts_title')}</h2>
+      <p class="panel-sub">${() => t('charts_sub')}</p>
+    </div>
+    ${CategoryFilter()}
+    <div id="chart-container">
+      ${() => chartNames().length === 0 && state.rows.length ? html`
+        <div class="empty" style="grid-column: 1 / -1;">
+          <p>${() => t('empty_no_match')}</p>
+        </div>
+      ` : ''}
+      ${() => chartNames().map((name) => {
+        const byName = testsByName()
+        const series = byName[name]
+        const unit = series[series.length - 1].unit || ''
+        const category = series[0].category || ''
+        return html`
+          <section class="chart-card" data-test="${name}">
+            <h3>${testLabel(name)}</h3>
+            <p class="sub">${catLabel(category)}${unit ? ` · ${unit}` : ''}</p>
+            <div class="chart-wrap"><canvas data-canvas="${name}"></canvas></div>
+          </section>
+        `.key(name)
+      })}
+    </div>
+  </section>
+`
+
+// ───────────── Chart.js lifecycle ─────────────
+
+const chartInstances = new Map()   // test_name -> Chart
+
+const buildChartConfig = (name, series) => {
+  const rust     = getVar('--rust')
+  const rustDeep = getVar('--rust-deep')
+  const ink      = getVar('--ink')
+  const inkSoft  = getVar('--ink-soft')
+  const inkFaint = getVar('--ink-faint')
+  const paper    = getVar('--paper-soft')
+  const band     = getVar('--band')
+  const bandEdge = getVar('--band-edge')
+  const rule     = getVar('--rule-soft')
+
+  const valuePoints = series.filter((r) => r.value != null)
+  const points = valuePoints.map((r) => ({ x: r.date, y: r.value }))
+  const lo = valuePoints.map((r) => r.reference_low).find((v) => v != null) ?? null
+  const hi = valuePoints.map((r) => r.reference_high).find((v) => v != null) ?? null
+  const xs = valuePoints.map((r) => r.date)
+  const unit = series[series.length - 1].unit || ''
+  const fromLabel = t('prov_from')
+
+  const datasets = [
+    {
+      label: name,
+      data: points,
+      borderColor: rust,
+      backgroundColor: rust,
+      borderWidth: 2,
+      tension: 0.2,
+      fill: false,
+      pointRadius: 5,
+      pointHoverRadius: 7,
+      pointBackgroundColor: paper,
+      pointBorderColor: rustDeep,
+      pointBorderWidth: 2,
+      order: 0,
+    },
+  ]
+
+  if (hi != null) {
+    datasets.push({
+      label: 'Reference high',
+      data: xs.map((x) => ({ x, y: hi })),
+      borderColor: bandEdge,
+      borderWidth: 1,
+      borderDash: [3, 5],
+      pointRadius: 0,
+      fill: lo != null ? '+1' : false,
+      backgroundColor: band,
+      tension: 0,
+      order: 2,
+    })
+  }
+  if (lo != null) {
+    datasets.push({
+      label: 'Reference low',
+      data: xs.map((x) => ({ x, y: lo })),
+      borderColor: bandEdge,
+      borderWidth: 1,
+      borderDash: [3, 5],
+      pointRadius: 0,
+      fill: false,
+      tension: 0,
+      order: 3,
+    })
+  }
+
+  return {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      layout: { padding: { top: 8, right: 6, bottom: 0, left: 0 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: ink,
+          titleColor: paper,
+          bodyColor: paper,
+          borderColor: rust,
+          borderWidth: 1,
+          cornerRadius: 2,
+          displayColors: false,
+          padding: { x: 12, y: 9 },
+          titleFont: { family: '"Spectral", serif', size: 12, weight: '500' },
+          bodyFont:  { family: '"Spectral", serif', size: 13, style: 'italic' },
+          callbacks: {
+            title: (items) => items[0]?.label ? new Date(items[0].parsed.x).toISOString().slice(0, 10) : '',
+            label: (ctx) => {
+              if (ctx.dataset.label === name) {
+                const r = valuePoints[ctx.dataIndex]
+                const flag = r?.flag ? `  · ${r.flag}` : ''
+                return `${fmt(ctx.parsed.y)} ${unit}${flag}`
+              }
+              return `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`
+            },
+            afterLabel: (ctx) => {
+              if (ctx.dataset.label !== name) return ''
+              const r = valuePoints[ctx.dataIndex]
+              const src = basename(r?.source_file)
+              return src ? `${fromLabel} ${src}` : ''
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: pickTimeUnit(xs), tooltipFormat: 'yyyy-MM-dd' },
+          grid: { color: rule, tickColor: rule, drawTicks: false },
+          border: { color: inkFaint },
+          ticks: {
+            color: inkSoft,
+            font: { family: '"Spectral", serif', size: 11, style: 'italic' },
+            padding: 8,
+            maxRotation: 0,
+          },
+        },
+        y: {
+          grid: { color: rule, tickColor: rule, drawTicks: false },
+          border: { color: inkFaint },
+          ticks: {
+            color: inkSoft,
+            font: { family: '"Spectral", serif', size: 11 },
+            padding: 8,
+          },
+        },
+      },
+    },
+  }
+}
+
+watch(() => {
+  // Tracked reads — any change re-runs this watcher.
+  const rows = state.rows
+  const tab = state.activeTab
+  const cat = state.categoryFilter
+  const lang = state.lang
+  void rows; void cat; void lang   // silence unused-var tools; reads are intentional
+
+  if (tab !== 'charts' || !rows.length) {
+    chartInstances.forEach((c) => c.destroy())
+    chartInstances.clear()
+    return
+  }
+
+  queueMicrotask(() => {
+    const byName = testsByName()
+    const names = chartNames()
+    const wanted = new Set(names)
+
+    for (const [name, inst] of chartInstances) {
+      if (!wanted.has(name)) { inst.destroy(); chartInstances.delete(name) }
+    }
+
+    for (const name of names) {
+      const canvas = document.querySelector(`canvas[data-canvas="${CSS.escape(name)}"]`)
+      if (!canvas) continue
+      chartInstances.get(name)?.destroy()
+      const chart = new Chart(canvas, buildChartConfig(name, byName[name]))
+      chartInstances.set(name, chart)
+    }
+  })
+})
+
 // ───────────── root view ─────────────
 
 const App = () => html`
@@ -360,7 +605,7 @@ const App = () => html`
   ${Header()}
   <main class="wrap">
     ${() => state.activeTab === 'summary' ? SummaryPanel() : ''}
-    ${() => state.activeTab === 'charts'  ? html`<section class="panel active"><p>Charts coming next task.</p></section>` : ''}
+    ${() => state.activeTab === 'charts'  ? ChartsPanel() : ''}
     ${() => state.activeTab === 'table'   ? html`<section class="panel active"><p>Table coming next task.</p></section>` : ''}
   </main>
 `
