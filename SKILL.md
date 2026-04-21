@@ -31,7 +31,10 @@ The skill is format-agnostic: the only thing that matters is that the final rows
 ## The workflow in one picture
 
 ```
-source(s) ──► agent normalizes ──► scripts/append_to_csv.py ──► health_data.csv ──► scripts/serve.py ──► browser dashboard
+source(s) ──► agent normalizes ──► scripts/append_to_csv.py ──► health_data.csv
+                               ╰─► agent writes ────────────► health_context.json ─┐
+                                                                                   ▼
+                                                                 scripts/serve.py ──► dashboard
 ```
 
 The agent (Claude Code, OpenCode, Codex, etc. — anything that speaks the agent-skills spec) does the format-specific parsing and unit normalization. That's the part that needs judgment. The two Python scripts handle the deterministic parts: idempotent CSV updates and serving the dashboard. The frontend (`assets/index.html`, `assets/app.js`) reads the CSV via an HTTP endpoint and renders it with Chart.js.
@@ -86,7 +89,50 @@ The script:
 
 It will print a short summary (`Wrote N rows, M new, K updated`). Read that output and relay a one-line summary to the user.
 
-### 4. Launch the dashboard
+### 4. Write the context JSON (optional but recommended)
+
+Alongside the CSV, write `health_context.json` in the same directory. This is what the dashboard's priorities panel and detail modal display per test. Agents regenerate it whenever new rows land.
+
+Shape:
+
+```json
+{
+  "biomarkers": {
+    "Hemoglobin": {
+      "description": "What this biomarker measures, 1–3 sentences.",
+      "high": "Common causes of elevated values.",
+      "low":  "Common causes of depressed values.",
+      "suggestions": [
+        "Actionable, lifestyle-first bullet.",
+        "Another bullet."
+      ]
+    }
+  },
+  "recommendations": {
+    "Insulin": {
+      "severity": "attention",
+      "headline": "One-line summary tied to this user's actual values.",
+      "detail":   "1–3 sentences citing specific readings and trends.",
+      "actions": [
+        "Concrete step 1.",
+        "Concrete step 2."
+      ]
+    }
+  }
+}
+```
+
+Rules:
+
+- **Single language.** Write in whichever language suits the user's data and preference. There is no bilingual nesting.
+- **Keyed by canonical test name** — exactly the `test_name` values used in `health_data.csv`.
+- **Both top-level keys are optional.** Omit `biomarkers` or `recommendations` entirely if you have nothing for them.
+- **Only include tests the user actually has.** No point describing Hemoglobin if it's not in the CSV.
+- **`severity`** is one of `"attention"` (flagged / act now), `"watch"` (in range but drifting / part of a pattern), or `"info"` (context, likely benign).
+- **Keep it concise.** This content is read by a human; verbose writing costs tokens every extraction and makes the dashboard harder to scan.
+- The file is **optional** — if it's missing, the dashboard hides the priorities panel and shows "no reference notes yet" in the detail modal. Writing it is strongly recommended.
+
+### 5. Launch the dashboard
 
 ```bash
 python3 scripts/serve.py --csv health_data.csv
@@ -172,6 +218,6 @@ Python 3.9+ is assumed.
 - `SKILL.md` — this file
 - `scripts/append_to_csv.py` — idempotent CSV writer with dedup, flag computation, and sorting
 - `scripts/serve.py` — standard-library HTTP server that serves `assets/` and exposes `/api/data` from the CSV
-- `assets/index.html`, `assets/app.js`, `assets/styles.css` — the dashboard frontend
+- `assets/index.html`, `assets/app.js`, `assets/i18n.js`, `assets/styles.css` — the dashboard frontend (Arrow + Chart.js, loaded from CDN)
 - `references/extraction-guide.md` — worked examples for extracting from common report layouts
 - `references/test-names.md` — canonical test names and category list
