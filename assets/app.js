@@ -1,6 +1,7 @@
 import { reactive, html, watch } from 'https://esm.sh/@arrow-js/core'
 import { render } from 'https://esm.sh/@arrow-js/framework'
 import Chart from 'https://esm.sh/chart.js/auto'
+import 'https://esm.sh/chartjs-adapter-date-fns'
 import { strings, testNamesRu, categoriesRu } from './i18n.js'
 
 // ───────────── reactive root ─────────────
@@ -98,10 +99,10 @@ watch(() => {
 
 const LangSwitch = () => html`
   <nav class="lang-switch" aria-label="Language">
-    <button class="lang-btn ${() => state.lang === 'en' ? 'active' : ''}"
+    <button class="${() => `lang-btn ${state.lang === 'en' ? 'active' : ''}`}"
             @click="${() => { state.lang = 'en' }}">EN</button>
     <span class="lang-sep">·</span>
-    <button class="lang-btn ${() => state.lang === 'ru' ? 'active' : ''}"
+    <button class="${() => `lang-btn ${state.lang === 'ru' ? 'active' : ''}`}"
             @click="${() => { state.lang = 'ru' }}">RU</button>
   </nav>
 `
@@ -164,7 +165,7 @@ const Tabs = () => {
   return html`
     <nav class="tabs" role="tablist">
       ${tabs.map(([id, key]) => html`
-        <button class="tab ${() => state.activeTab === id ? 'active' : ''}"
+        <button class="${() => `tab ${state.activeTab === id ? 'active' : ''}`}"
                 @click="${() => { state.activeTab = id }}">
           ${() => t(key)}
         </button>
@@ -241,20 +242,19 @@ const Priorities = () => html`
         ${() => priorityEntries().map(({ test, rec, latest }) => {
           const flag = latest.flag || ''
           const hasRange = latest.reference_low != null || latest.reference_high != null
-          const rangeStr = hasRange
-            ? `${t('detail_range')} ${latest.reference_low ?? '—'}–${latest.reference_high ?? '—'}`
-            : ''
+          const rangeLow = latest.reference_low ?? '—'
+          const rangeHigh = latest.reference_high ?? '—'
           return html`
-            <article class="priority-card sev-${rec.severity}"
+            <article class="${`priority-card sev-${rec.severity}`}"
                      @click="${() => { state.detail = test }}">
               <div class="priority-top">
-                <span class="priority-name">${testLabel(test)}</span>
-                <span class="priority-sev sev-${rec.severity}">${severityLabel(rec.severity)}</span>
+                <span class="priority-name">${() => testLabel(test)}</span>
+                <span class="${`priority-sev sev-${rec.severity}`}">${() => severityLabel(rec.severity)}</span>
               </div>
               <div class="priority-meta">
                 <span class="priority-val">${fmt(latest.value)}<span class="unit">${latest.unit || ''}</span></span>
-                ${flag ? html`<span class="flag ${flag}">${flag}</span>` : ''}
-                ${rangeStr ? html`<span class="priority-range">${rangeStr}</span>` : ''}
+                ${flag ? html`<span class="${`flag ${flag}`}">${flag}</span>` : ''}
+                ${hasRange ? html`<span class="priority-range">${() => `${t('detail_range')} ${rangeLow}–${rangeHigh}`}</span>` : ''}
                 <span class="priority-range">${latest.date}</span>
               </div>
               <p class="priority-headline">${rec.headline}</p>
@@ -327,13 +327,13 @@ const SummaryPanel = () => html`
         return html`
           <article class="card" @click="${() => { state.detail = name }}">
             <div class="name">
-              <span class="name-text">${testLabel(name)}</span>
-              ${flag ? html`<span class="flag ${flag}">${flag}</span>` : ''}
+              <span class="name-text">${() => testLabel(name)}</span>
+              ${flag ? html`<span class="${`flag ${flag}`}">${flag}</span>` : ''}
             </div>
             <div class="value">${fmt(latest.value)}<span class="unit">${latest.unit || ''}</span></div>
             <div class="sub">
               <span class="date">${latest.date}</span>
-              <span class="delta ${deltaClass}">${deltaStr}</span>
+              <span class="${`delta ${deltaClass}`}">${deltaStr}</span>
             </div>
             ${Provenance(latest, uniqueSourceCount, series.length)}
           </article>
@@ -382,7 +382,7 @@ const categoryList = () => {
 const CategoryFilter = () => html`
   <div class="filter">
     ${() => categoryList().map((c) => html`
-      <button class="chip ${() => state.categoryFilter === c ? 'active' : ''}"
+      <button class="${() => `chip ${state.categoryFilter === c ? 'active' : ''}`}"
               @click="${() => { state.categoryFilter = c }}">
         ${() => catLabel(c)}
       </button>
@@ -419,8 +419,8 @@ const ChartsPanel = () => html`
         const category = series[0].category || ''
         return html`
           <section class="chart-card" data-test="${name}">
-            <h3>${testLabel(name)}</h3>
-            <p class="sub">${catLabel(category)}${unit ? ` · ${unit}` : ''}</p>
+            <h3>${() => testLabel(name)}</h3>
+            <p class="sub">${() => catLabel(category)}${unit ? ` · ${unit}` : ''}</p>
             <div class="chart-wrap"><canvas data-canvas="${name}"></canvas></div>
           </section>
         `.key(name)
@@ -656,7 +656,7 @@ const TablePanel = () => html`
       </p>
     </div>
     <div class="table-controls">
-      <input type="search"
+      <input id="table-search" type="search"
              placeholder="${() => t('record_search')}"
              value="${() => state.tableSearch}"
              @input="${(e) => { state.tableSearch = e.target.value }}">
@@ -675,10 +675,10 @@ const TablePanel = () => html`
                 const v = r[c]
                 const cls = (c === 'value' || c === 'reference_low' || c === 'reference_high') ? 'num' : ''
                 if (c === 'flag' && v) {
-                  return html`<td><span class="flag ${v}">${v}</span></td>`
+                  return html`<td><span class="${`flag ${v}`}">${v}</span></td>`
                 }
-                if (c === 'test_name') return html`<td class="${cls}">${testLabel(v)}</td>`
-                if (c === 'category')  return html`<td class="${cls}">${catLabel(v)}</td>`
+                if (c === 'test_name') return html`<td class="${cls}">${() => testLabel(v)}</td>`
+                if (c === 'category')  return html`<td class="${cls}">${() => catLabel(v)}</td>`
                 return html`<td class="${cls}">${v == null || v === '' ? '' : String(v)}</td>`
               })}
             </tr>
@@ -725,34 +725,41 @@ watch(() => {
   })
 })
 
+const readingsFor = (lang, n) => {
+  const fn = strings[lang]?.detail_reading_n ?? ((m) => `${m} readings`)
+  return fn(n)
+}
+
+const noInfoFor = (lang, labeledName) => {
+  const fn = strings[lang]?.detail_no_info ?? ((m) => `No reference notes yet for "${m}".`)
+  return fn(labeledName)
+}
+
 const DetailBody = (entry) => {
   const { name, series, latest, info, rec } = entry
   const flag = latest.flag || ''
   const hasRange = latest.reference_low != null || latest.reference_high != null
-  const rangeStr = hasRange
-    ? `${t('detail_range')} ${latest.reference_low ?? '—'}..${latest.reference_high ?? '—'}`
-    : t('detail_no_range')
+  const rangeLow = latest.reference_low ?? '—'
+  const rangeHigh = latest.reference_high ?? '—'
   const hist = [...series].reverse()
-  const readingsFn = strings[state.lang]?.detail_reading_n ?? ((n) => `${n} readings`)
-  const noInfoFn = strings[state.lang]?.detail_no_info ?? ((n) => `No reference notes yet for "${n}".`)
 
   return html`
     <article class="detail-body">
       <header class="detail-head">
         <p class="detail-eyebrow">${() => catLabel(latest.category || '')}</p>
-        <h2>${testLabel(name)}</h2>
+        <h2 id="detail-name">${() => testLabel(name)}</h2>
         <div class="detail-latest">
           <span class="detail-val">${fmt(latest.value)}<span class="unit">${latest.unit || ''}</span></span>
-          ${flag ? html`<span class="flag ${flag}">${flag}</span>` : ''}
+          ${flag ? html`<span class="${`flag ${flag}`}">${flag}</span>` : ''}
           <span class="detail-date">${latest.date}</span>
-          <span class="detail-range">${rangeStr}</span>
+          <span class="detail-range">${() => hasRange ? `${t('detail_range')} ${rangeLow}..${rangeHigh}` : t('detail_no_range')}</span>
         </div>
       </header>
 
       ${rec ? html`
-        <div class="detail-rec sev-${rec.severity}">
+        <div class="${`detail-rec sev-${rec.severity}`}">
           <div class="detail-rec-top">
-            <span class="detail-rec-label sev-${rec.severity}">${severityLabel(rec.severity)}</span>
+            <span class="${`detail-rec-label sev-${rec.severity}`}">${() => severityLabel(rec.severity)}</span>
           </div>
           <p class="detail-rec-headline">${rec.headline || ''}</p>
           <p class="detail-rec-detail">${rec.detail || ''}</p>
@@ -772,7 +779,7 @@ const DetailBody = (entry) => {
         ${(info.high || info.low) ? html`
           <section class="detail-section">
             <h3>${() => t('detail_interpret')}</h3>
-            <dl>
+            <dl id="detail-interpret-body">
               ${info.high ? html`<dt class="hi">${() => t('detail_if_high')}</dt><dd>${info.high}</dd>` : ''}
               ${info.low  ? html`<dt class="lo">${() => t('detail_if_low')}</dt><dd>${info.low}</dd>` : ''}
             </dl>
@@ -781,13 +788,13 @@ const DetailBody = (entry) => {
         ${(info.suggestions || []).length ? html`
           <section class="detail-section">
             <h3>${() => t('detail_suggest')}</h3>
-            <ul>${(info.suggestions || []).map((s) => html`<li>${s}</li>`)}</ul>
+            <ul id="detail-suggestions">${(info.suggestions || []).map((s) => html`<li>${s}</li>`)}</ul>
           </section>
         ` : ''}
       ` : html`
         <section class="detail-section">
           <h3>${() => t('detail_no_info_h')}</h3>
-          <div class="detail-missing">${noInfoFn(testLabel(name))}</div>
+          <div class="detail-missing">${() => noInfoFor(state.lang, testLabel(name))}</div>
         </section>
       `}
 
@@ -799,7 +806,7 @@ const DetailBody = (entry) => {
       <section class="detail-section detail-history">
         <h3>
           <span>${() => t('detail_readings')}</span>
-          <span class="detail-history-count">· ${readingsFn(hist.length)}</span>
+          <span class="detail-history-count">· ${() => readingsFor(state.lang, hist.length)}</span>
         </h3>
         <div class="detail-history-scroll">
           <table id="detail-history-table">
@@ -814,7 +821,7 @@ const DetailBody = (entry) => {
                 <tr>
                   <td>${r.date}</td>
                   <td class="num">${fmt(r.value)} ${r.unit || ''}</td>
-                  <td>${r.flag ? html`<span class="flag ${r.flag}">${r.flag}</span>` : ''}</td>
+                  <td>${r.flag ? html`<span class="${`flag ${r.flag}`}">${r.flag}</span>` : ''}</td>
                   <td class="src" title="${r.source_file || ''}">${basename(r.source_file) || '—'}</td>
                 </tr>
               `.key(`${r.date}|${r.source_file}`))}
