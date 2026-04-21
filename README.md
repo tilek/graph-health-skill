@@ -23,25 +23,21 @@ Visually the dashboard is set in *Instrument Serif* + *Spectral* on a warm paper
 
 ### Recommended: [`npx skills`](https://github.com/vercel-labs/skills) (Vercel Labs)
 
-One command, works for Claude Code, OpenCode, Codex, and 40+ other agents:
-
 ```bash
-# Install for a specific agent
-npx skills add -g -a claude-code tilek/graph-health-skill
-npx skills add -g -a opencode    tilek/graph-health-skill
-npx skills add -g -a codex       tilek/graph-health-skill
-
-# Install for multiple at once
-npx skills add -g -a claude-code -a opencode -a codex tilek/graph-health-skill
-
-# Install for every agent you have locally
-npx skills add -g tilek/graph-health-skill
+npx skills add tilek/graph-health-skill
 ```
 
-- `-g` installs globally (user-level, available in every project). Omit `-g` to install as a project-local skill under the current working directory.
-- `-a <agent>` targets a specific agent; omit to install everywhere.
+That's it. The CLI walks you through the rest — picks up Claude Code, OpenCode, Codex, and any other agent-skills runner it finds locally, asks whether to install globally or per-project, and whether to symlink or copy.
 
-You can also pass the full URL (`https://github.com/tilek/graph-health-skill`) or a `git@…` SSH URL.
+If you want to skip the prompts, the common flags are:
+
+| Flag | Meaning |
+|---|---|
+| `-g` | Install globally (`~/<agent>/skills/`) instead of the current project |
+| `-a claude-code` | Target a specific agent (repeatable: `-a claude-code -a opencode`) |
+| `-y` | Skip all confirmation prompts |
+
+You can also pass a full URL (`https://github.com/tilek/graph-health-skill`) or a `git@…` SSH URL instead of the `owner/repo` shorthand.
 
 ### Alternative: manual git clone
 
