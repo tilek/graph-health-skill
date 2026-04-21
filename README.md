@@ -33,31 +33,48 @@ ln -s "$PWD" ~/.claude/skills/graph-health-skill
 
 The skill activates when Claude detects a health-data request (lab report, blood work, biomarker tracking, etc.).
 
+## Where your data lives
+
+The install path above (`~/.claude/skills/graph-health-skill`) is where the skill's *code* lives — SKILL.md, scripts, the dashboard frontend. **It is not where your CSV goes.**
+
+Your `health_data.csv` lives in whatever directory you're working in when you ask Claude to ingest a report. The skill writes to `health_data.csv` in the current working directory by default. A common pattern:
+
+```bash
+mkdir -p ~/health
+cd ~/health
+# From inside this folder, ask Claude to ingest your lab reports.
+# The skill creates ~/health/health_data.csv, and runs the dashboard
+# serving that file — entirely separate from the skill install.
+```
+
+Pick any folder you like — `~/health`, `~/Documents/labs`, anywhere. The skill never writes into its own install directory, and you can move or back up your workspace without touching the skill.
+
 ## Updating the skill
 
-Pull the latest from wherever you installed it:
+Pull the latest from the skill install location:
 
 ```bash
 cd ~/.claude/skills/graph-health-skill
 git pull
 ```
 
-Your `health_data.csv` is gitignored and will not be touched by updates — a `git pull` only changes the skill's own files (SKILL.md, scripts, assets, references). The dashboard will pick up changes on the next browser refresh; if `serve.py` itself was updated, restart it (Ctrl+C and rerun).
+Your health data is in a completely separate location (your workspace — see above), so `git pull` only updates the skill's own files (SKILL.md, scripts, assets, references) and never touches your readings. The dashboard picks up changes on the next browser refresh; if `serve.py` itself was updated, restart it (Ctrl+C and rerun).
 
-If a pull reports local changes, it usually means you tweaked a skill file (e.g. added entries to `biomarkers.js` or `references/test-names.md`). Stash your edits first (`git stash`), pull, then reapply (`git stash pop`) — or fork the repo if you're maintaining a significantly customized version.
+If a pull reports local changes, you've tweaked a skill file (e.g. added entries to `biomarkers.js` or `references/test-names.md`). Stash them first (`git stash`), pull, then reapply (`git stash pop`) — or fork the repo if you're maintaining a significantly customized version.
 
-After a pull that changes `recommendations.js`, regenerate the personalized notes against your current readings by asking Claude something like *"the skill was updated; regenerate my personalized recommendations from `health_data.csv`"*. The notes reference actual values, so they should be rebuilt whenever either the data or the skill's analysis logic changes.
+After a pull that changes `recommendations.js`, regenerate your personalized notes by asking Claude something like *"the skill was updated; regenerate my personalized recommendations from `health_data.csv`"*. Those notes reference your actual values, so they should be rebuilt whenever either the data or the skill's analysis logic changes.
 
 ## Using it — a typical session
 
 ```
-you:     I have my blood work at ~/Downloads/2026-04-02 lab.pdf. Ingest it.
+you:     (in ~/health)
+         I have my blood work at ~/Downloads/2026-04-02 lab.pdf. Ingest it.
 Claude:  [reads the PDF, extracts 24 rows]
-         Wrote 24 rows to health_data.csv. Six are out of range:
+         Wrote 24 rows to ~/health/health_data.csv. Six are out of range:
          Vitamin D (73.9 nmol/L), RBC (5.81), ...
          Starting the dashboard at http://127.0.0.1:8765/.
 
-you:     Also add /Users/me/Downloads/wellnessfx_export.xlsx — it's a decade of history.
+you:     Also add ~/Downloads/wellnessfx_export.xlsx — it's a decade of history.
 Claude:  [reads the xlsx, normalizes 77 markers, converts units to match
          existing CSV, dedupes, appends 427 rows]
          496 readings total now. Refresh your browser.
@@ -95,13 +112,18 @@ The append script is idempotent: re-running on the same source is a no-op. Dedup
 
 ## Running the dashboard manually
 
+From your workspace (where `health_data.csv` lives), point the skill's `serve.py` at it:
+
 ```bash
-python3 scripts/serve.py --csv health_data.csv
+cd ~/health
+python3 ~/.claude/skills/graph-health-skill/scripts/serve.py --csv health_data.csv
 ```
 
 Starts an HTTP server on port 8765 (or the next free port), opens your browser, and serves the dashboard. Ctrl+C to stop. The server re-reads the CSV on every request, so adding more readings just needs a browser refresh.
 
-## File layout
+## File layout (the skill's own files)
+
+This is the tree inside the skill install directory. Your health data is *not* here — see [Where your data lives](#where-your-data-lives).
 
 ```
 graph-health-skill/
@@ -115,7 +137,10 @@ graph-health-skill/
 │   ├── app.js                    # rendering, charts, provenance, priorities, modal
 │   ├── styles.css                # the warm paper aesthetic
 │   ├── biomarkers.js             # ~95 biomarker reference notes (what it is, high/low, suggestions)
-│   └── recommendations.js        # personalized notes — regenerated when new data lands
+│   ├── biomarkers.ru.js          # Russian translations of the above
+│   ├── recommendations.js        # personalized notes — regenerated when new data lands
+│   ├── recommendations.ru.js     # Russian translations of the above
+│   └── i18n.js                   # UI strings + test-name / category translations (EN/RU)
 └── references/
     ├── extraction-guide.md       # per-format extraction patterns and unit conversions
     └── test-names.md             # canonical names + aliases + category list
@@ -123,9 +148,11 @@ graph-health-skill/
 
 ## Privacy
 
-`health_data.csv` is in [`.gitignore`](.gitignore) and never committed. Git history is effectively permanent — accidentally pushing real medical data to a remote is hard to undo. If you explicitly want to version your readings in this repo (a private fork, local use only), remove the line from `.gitignore`.
+Your `health_data.csv` lives in your own workspace directory — **never** inside the skill install. That separation is the primary privacy mechanism: updates to the skill can't accidentally touch your data, and pushing changes to your fork of the skill can't accidentally leak your readings.
 
-The dashboard runs entirely on `127.0.0.1` and does no network calls beyond fetching Chart.js from a CDN on first load.
+The skill's own `.gitignore` excludes `health_data.csv` as a development safety net (so if you happen to edit the skill from within a workspace that also holds a CSV, it won't get committed), but the main point is that your CSV simply isn't in the same tree.
+
+The dashboard runs entirely on `127.0.0.1` and makes no network calls beyond fetching Chart.js + date-fns from a CDN on first load.
 
 ## Dependencies
 

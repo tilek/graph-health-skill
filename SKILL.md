@@ -42,7 +42,9 @@ Claude does the format-specific parsing and unit normalization (that's the part 
 
 Ask the user for the source path(s). If they pass a directory, list candidate files in it and confirm which to process. Common patterns: `*.pdf`, `*.xlsx`, `*.csv`, `*.json`, `*.txt`.
 
-Decide where the CSV lives. Default: `health_data.csv` in the current working directory. If a CSV already exists there, reuse it so new readings append to the existing history instead of starting fresh — the whole point of this skill is that the CSV grows across visits and sources.
+Decide where the CSV lives. Default: `health_data.csv` in the **user's current working directory** — which is their personal health workspace (e.g. `~/health/`), *not* this skill's install directory. The skill never writes data into its own install tree. If a CSV already exists in the user's workspace, reuse it so new readings append to the existing history instead of starting fresh — the whole point of this skill is that the CSV grows across visits and sources.
+
+If the current working directory is the skill's own directory (i.e. you're being invoked from inside the skill source — usually during skill development), confirm with the user where they actually want the CSV to live before writing.
 
 ### 2. Extract structured rows from each source
 
