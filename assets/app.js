@@ -4,10 +4,51 @@
     tests: {},          // test_name -> array of rows, sorted by date
     categoryFilter: "All",
     tableSort: { col: "date", dir: "desc" },
+    lang: localStorage.getItem("lang") === "ru" ? "ru" : "en",
   };
+
+  // ───────────── helpers ─────────────
 
   function getVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function t(key) {
+    const pack = (window.I18N && window.I18N[state.lang]) || {};
+    const fallback = (window.I18N && window.I18N.en) || {};
+    const v = pack[key] !== undefined ? pack[key] : fallback[key];
+    return v === undefined ? key : v;
+  }
+
+  function testLabel(name) {
+    if (state.lang === "ru") {
+      return (window.TEST_NAMES_RU && window.TEST_NAMES_RU[name]) || name;
+    }
+    return name;
+  }
+
+  function catLabel(cat) {
+    if (!cat) return "";
+    if (cat === "All") return t("category_all");
+    if (state.lang === "ru") {
+      return (window.CATEGORIES_RU && window.CATEGORIES_RU[cat]) || cat;
+    }
+    return cat;
+  }
+
+  function getBiomarkers() {
+    return state.lang === "ru" ? (window.BIOMARKERS_RU || {}) : (window.BIOMARKERS || {});
+  }
+
+  function getRecommendations() {
+    return state.lang === "ru" ? (window.RECOMMENDATIONS_RU || {}) : (window.RECOMMENDATIONS || {});
+  }
+
+  function severityLabel(sev) {
+    if (sev === "attention") return t("severity_attention");
+    if (sev === "watch")     return t("severity_watch");
+    if (sev === "info")      return t("severity_info");
+    return sev;
   }
 
   // Warm Chart.js defaults
@@ -42,6 +83,8 @@
     reference_high: r.reference_high === "" ? null : Number(r.reference_high),
   });
 
+  // ───────────── load + render orchestration ─────────────
+
   async function load() {
     const res = await fetch("/api/data");
     const payload = await res.json();
@@ -60,6 +103,11 @@
       state.tests[r.test_name].push(r);
     }
 
+    renderAll();
+  }
+
+  function renderAll() {
+    applyStaticStrings();
     renderMeta();
     renderSources();
     renderPriorities();
@@ -69,11 +117,27 @@
     renderTable();
   }
 
+  function applyStaticStrings() {
+    document.documentElement.setAttribute("lang", state.lang);
+    document.querySelectorAll("[data-i18n]").forEach((el) => {
+      const key = el.getAttribute("data-i18n");
+      el.textContent = t(key);
+    });
+    document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+      const key = el.getAttribute("data-i18n-placeholder");
+      el.setAttribute("placeholder", t(key));
+    });
+    document.querySelectorAll(".lang-btn").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.lang === state.lang);
+    });
+  }
+
+  // ───────────── priorities ─────────────
+
   const SEVERITY_RANK = { attention: 0, watch: 1, info: 2 };
-  const SEVERITY_LABEL = { attention: "Needs attention", watch: "Worth watching", info: "Context" };
 
   function renderPriorities() {
-    const recs = window.RECOMMENDATIONS || {};
+    const recs = getRecommendations();
     const entries = [];
     for (const [test, rec] of Object.entries(recs)) {
       if (!state.tests[test]) continue;
@@ -97,14 +161,14 @@
     list.innerHTML = entries.map(({ test, rec, latest }) => {
       const flag = latest.flag || "";
       const rangeStr = (latest.reference_low != null || latest.reference_high != null)
-        ? `range ${latest.reference_low ?? "—"}–${latest.reference_high ?? "—"}`
+        ? `${t("detail_range")} ${latest.reference_low ?? "—"}–${latest.reference_high ?? "—"}`
         : "";
       const actionsHtml = (rec.actions || []).map((a) => `<li>${escapeHtml(a)}</li>`).join("");
       return `
         <article class="priority-card sev-${rec.severity}" data-test="${escapeHtml(test)}">
           <div class="priority-top">
-            <span class="priority-name">${escapeHtml(test)}</span>
-            <span class="priority-sev sev-${rec.severity}">${escapeHtml(SEVERITY_LABEL[rec.severity] || rec.severity)}</span>
+            <span class="priority-name">${escapeHtml(testLabel(test))}</span>
+            <span class="priority-sev sev-${rec.severity}">${escapeHtml(severityLabel(rec.severity))}</span>
           </div>
           <div class="priority-meta">
             <span class="priority-val">${fmt(latest.value)}<span class="unit">${escapeHtml(latest.unit || "")}</span></span>
@@ -122,6 +186,8 @@
       card.addEventListener("click", () => openDetail(card.dataset.test));
     });
   }
+
+  // ───────────── sources + provenance ─────────────
 
   function basename(p) {
     if (!p) return "";
@@ -148,10 +214,10 @@
     list.innerHTML = entries.map((e) => {
       const span = e.first === e.last ? e.first : `${e.first} — ${e.last}`;
       return `
-        <li data-src="${escapeHtml(e.src)}" title="Click to view all readings from this file">
+        <li data-src="${escapeHtml(e.src)}">
           <span class="src-name">${escapeHtml(e.src)}</span>
           <span class="src-dates">${escapeHtml(span)}</span>
-          <span class="src-count">${e.count} readings</span>
+          <span class="src-count">${e.count} ${escapeHtml(t("sources_readings"))}</span>
         </li>`;
     }).join("");
 
@@ -176,26 +242,31 @@
       p.classList.toggle("active", p.id === name));
   }
 
+  // ───────────── meta / summary ─────────────
+
   function renderEmpty() {
     const target = document.getElementById("summary-grid");
+    const csvPath = escapeHtml(state.csvPath || "health_data.csv");
     target.innerHTML = `
       <div class="empty" style="grid-column: 1 / -1;">
-        <p>The ledger is empty.</p>
-        <p>Record your first reading with <code>scripts/append_to_csv.py --csv ${escapeHtml(state.csvPath || "health_data.csv")}</code>, then refresh.</p>
+        <p>${escapeHtml(t("empty_title"))}</p>
+        <p>${escapeHtml(t("empty_body_pre"))} <code>scripts/append_to_csv.py --csv ${csvPath}</code> ${escapeHtml(t("empty_body_post"))}</p>
       </div>`;
-    document.getElementById("meta").textContent = "No readings yet";
+    document.getElementById("meta").textContent = t("empty_title");
+    applyStaticStrings();
   }
 
   function renderMeta() {
     const dates = [...new Set(state.rows.map((r) => r.date))].sort();
     const testCount = Object.keys(state.tests).length;
     document.getElementById("meta").textContent =
-      `${state.rows.length} readings · ${testCount} tests · ${dates[0]} — ${dates[dates.length - 1]}`;
+      `${state.rows.length} ${t("meta_readings")} · ${testCount} ${t("meta_tests")} · ${dates[0]} — ${dates[dates.length - 1]}`;
   }
 
   function renderSummary() {
     const grid = document.getElementById("summary-grid");
-    const names = Object.keys(state.tests).sort();
+    const names = Object.keys(state.tests).sort((a, b) =>
+      testLabel(a).localeCompare(testLabel(b), state.lang === "ru" ? "ru" : "en"));
     grid.innerHTML = names.map((name) => {
       const series = state.tests[name];
       const latest = series[series.length - 1];
@@ -207,9 +278,9 @@
       const uniqueSources = new Set(series.map((r) => r.source_file).filter(Boolean));
       const provenance = renderProvenance(latest, uniqueSources.size, series.length);
       return `
-        <article class="card" data-test="${escapeHtml(name)}" title="Click to see every reading of ${escapeHtml(name)} with its source">
+        <article class="card" data-test="${escapeHtml(name)}">
           <div class="name">
-            <span class="name-text">${escapeHtml(name)}</span>
+            <span class="name-text">${escapeHtml(testLabel(name))}</span>
             ${flag ? `<span class="flag ${flag}">${flag}</span>` : ""}
           </div>
           <div class="value">${fmt(latest.value)}<span class="unit">${escapeHtml(latest.unit || "")}</span></div>
@@ -226,19 +297,30 @@
     });
   }
 
+  function renderProvenance(latest, uniqueSourceCount, totalReadings) {
+    const src = basename(latest.source_file);
+    if (!src) return "";
+    if (uniqueSourceCount <= 1) {
+      return `<div class="provenance"><span class="prov-label">${escapeHtml(t("prov_from"))}</span><cite>${escapeHtml(src)}</cite></div>`;
+    }
+    return `<div class="provenance"><span class="prov-label">${escapeHtml(t("prov_latest"))}</span><cite>${escapeHtml(src)}</cite> <span class="multi">· ${totalReadings} ${escapeHtml(t("meta_readings"))} ${escapeHtml(t("prov_across"))} ${uniqueSourceCount} ${escapeHtml(t("prov_sources"))}</span></div>`;
+  }
+
+  // ───────────── detail modal ─────────────
+
   function openDetail(testName) {
     const series = state.tests[testName];
     if (!series || !series.length) return;
     const latest = series[series.length - 1];
-    const info = (window.BIOMARKERS || {})[testName];
+    const info = getBiomarkers()[testName];
 
-    document.getElementById("detail-category").textContent = latest.category || "";
-    document.getElementById("detail-name").textContent = testName;
+    document.getElementById("detail-category").textContent = catLabel(latest.category || "");
+    document.getElementById("detail-name").textContent = testLabel(testName);
 
     const flag = latest.flag || "";
     const rangeStr = (latest.reference_low != null || latest.reference_high != null)
-      ? `range ${latest.reference_low ?? "—"}..${latest.reference_high ?? "—"}`
-      : "no reference range reported";
+      ? `${t("detail_range")} ${latest.reference_low ?? "—"}..${latest.reference_high ?? "—"}`
+      : t("detail_no_range");
     document.getElementById("detail-latest").innerHTML = `
       <span class="detail-val">${fmt(latest.value)}<span class="unit">${escapeHtml(latest.unit || "")}</span></span>
       ${flag ? `<span class="flag ${flag}">${flag}</span>` : ""}
@@ -246,14 +328,14 @@
       <span class="detail-range">${escapeHtml(rangeStr)}</span>
     `;
 
-    // Personalized recommendation block (if any)
-    const rec = (window.RECOMMENDATIONS || {})[testName];
+    // Personalized recommendation block
+    const rec = getRecommendations()[testName];
     const recBox = document.getElementById("detail-rec");
     if (rec) {
       recBox.hidden = false;
       recBox.className = `detail-rec sev-${rec.severity}`;
       const labelEl = document.getElementById("detail-rec-label");
-      labelEl.textContent = SEVERITY_LABEL[rec.severity] || rec.severity;
+      labelEl.textContent = severityLabel(rec.severity);
       labelEl.className = `detail-rec-label sev-${rec.severity}`;
       document.getElementById("detail-rec-headline").textContent = rec.headline || "";
       document.getElementById("detail-rec-detail").textContent = rec.detail || "";
@@ -272,27 +354,31 @@
       aboutSec.style.display = "";
       interpSec.style.display = "";
       suggestSec.style.display = "";
-      document.getElementById("detail-desc").textContent = info.description || "";
-      const interpBody = document.getElementById("detail-interpret-body");
+      aboutSec.innerHTML = `
+        <h3>${escapeHtml(t("detail_about"))}</h3>
+        <p id="detail-desc">${escapeHtml(info.description || "")}</p>`;
+      const interpBody = document.createElement("dl");
+      interpBody.id = "detail-interpret-body";
       const rows = [];
-      if (info.high) rows.push(`<dt class="hi">If high</dt><dd>${escapeHtml(info.high)}</dd>`);
-      if (info.low)  rows.push(`<dt class="lo">If low</dt><dd>${escapeHtml(info.low)}</dd>`);
-      interpBody.innerHTML = rows.join("");
+      if (info.high) rows.push(`<dt class="hi">${escapeHtml(t("detail_if_high"))}</dt><dd>${escapeHtml(info.high)}</dd>`);
+      if (info.low)  rows.push(`<dt class="lo">${escapeHtml(t("detail_if_low"))}</dt><dd>${escapeHtml(info.low)}</dd>`);
+      interpSec.innerHTML = `<h3>${escapeHtml(t("detail_interpret"))}</h3><dl id="detail-interpret-body">${rows.join("")}</dl>`;
       interpSec.style.display = rows.length ? "" : "none";
-      const sug = document.getElementById("detail-suggestions");
-      sug.innerHTML = (info.suggestions || []).map((s) => `<li>${escapeHtml(s)}</li>`).join("");
+      const suggestionItems = (info.suggestions || []).map((s) => `<li>${escapeHtml(s)}</li>`).join("");
+      suggestSec.innerHTML = `<h3>${escapeHtml(t("detail_suggest"))}</h3><ul id="detail-suggestions">${suggestionItems}</ul>`;
       suggestSec.style.display = (info.suggestions && info.suggestions.length) ? "" : "none";
     } else {
+      const noInfoFn = (window.I18N && window.I18N[state.lang] && window.I18N[state.lang].detail_no_info) || ((n) => `No reference notes yet for "${n}".`);
       aboutSec.innerHTML = `
-        <h3>About this test</h3>
-        <div class="detail-missing">No reference notes yet for “${escapeHtml(testName)}”. The numerical history below is pulled directly from your source files.</div>`;
+        <h3>${escapeHtml(t("detail_no_info_h"))}</h3>
+        <div class="detail-missing">${escapeHtml(noInfoFn(testLabel(testName)))}</div>`;
       interpSec.style.display = "none";
       suggestSec.style.display = "none";
     }
 
-    // Readings history (newest first)
     const hist = [...series].reverse();
-    document.getElementById("detail-history-count").textContent = `· ${hist.length} reading${hist.length === 1 ? "" : "s"}`;
+    const readingsFn = (window.I18N && window.I18N[state.lang] && window.I18N[state.lang].detail_reading_n) || ((n) => `${n} readings`);
+    document.getElementById("detail-history-count").textContent = `· ${readingsFn(hist.length)}`;
     const tbody = document.querySelector("#detail-history-table tbody");
     tbody.innerHTML = hist.map((r) => `
       <tr>
@@ -309,37 +395,27 @@
       jumpToRecord(testName);
     };
 
-    // Clicking the backdrop closes the dialog
     dialog.onclick = (ev) => {
       if (ev.target === dialog) dialog.close();
     };
 
     if (typeof dialog.showModal === "function") {
       dialog.showModal();
-      dialog.scrollTop = 0;
       const scroll = dialog.querySelector(".detail-body");
       if (scroll) scroll.scrollTop = 0;
     } else {
-      // Fallback for very old browsers: just jump to record
       jumpToRecord(testName);
     }
   }
 
-  function renderProvenance(latest, uniqueSourceCount, totalReadings) {
-    const src = basename(latest.source_file);
-    if (!src) return "";
-    if (uniqueSourceCount <= 1) {
-      return `<div class="provenance"><span class="prov-label">from</span><cite>${escapeHtml(src)}</cite></div>`;
-    }
-    return `<div class="provenance"><span class="prov-label">latest from</span><cite>${escapeHtml(src)}</cite> <span class="multi">· ${totalReadings} readings across ${uniqueSourceCount} sources</span></div>`;
-  }
+  // ───────────── charts ─────────────
 
   function renderCategoryFilter() {
     const cats = [...new Set(state.rows.map((r) => r.category).filter(Boolean))].sort();
     cats.unshift("All");
     const container = document.getElementById("category-filter");
     container.innerHTML = cats.map((c) =>
-      `<button class="chip ${c === state.categoryFilter ? "active" : ""}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`
+      `<button class="chip ${c === state.categoryFilter ? "active" : ""}" data-cat="${escapeHtml(c)}">${escapeHtml(catLabel(c))}</button>`
     ).join("");
     container.querySelectorAll(".chip").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -360,10 +436,10 @@
 
     const names = Object.keys(state.tests)
       .filter((n) => state.categoryFilter === "All" || state.tests[n][0].category === state.categoryFilter)
-      .sort();
+      .sort((a, b) => testLabel(a).localeCompare(testLabel(b), state.lang === "ru" ? "ru" : "en"));
 
     if (!names.length) {
-      container.innerHTML = `<div class="empty" style="grid-column: 1 / -1;"><p>No tests in this category.</p></div>`;
+      container.innerHTML = `<div class="empty" style="grid-column: 1 / -1;"><p>${escapeHtml(t("empty_no_match"))}</p></div>`;
       return;
     }
 
@@ -386,8 +462,8 @@
       const unit = series[series.length - 1].unit || "";
       const category = series[0].category || "";
       card.innerHTML = `
-        <h3>${escapeHtml(name)}</h3>
-        <p class="sub">${escapeHtml(category)}${unit ? ` · measured in ${escapeHtml(unit)}` : ""}</p>
+        <h3>${escapeHtml(testLabel(name))}</h3>
+        <p class="sub">${escapeHtml(catLabel(category))}${unit ? ` · ${escapeHtml(unit)}` : ""}</p>
         <div class="chart-wrap"><canvas></canvas></div>`;
       container.appendChild(card);
       const canvas = card.querySelector("canvas");
@@ -443,6 +519,8 @@
         });
       }
 
+      const fromLabel = t("prov_from");
+
       const chart = new Chart(canvas, {
         type: "line",
         data: { datasets },
@@ -478,7 +556,7 @@
                   if (ctx.dataset.label !== name) return "";
                   const r = series[ctx.dataIndex];
                   const src = basename(r?.source_file);
-                  return src ? `from ${src}` : "";
+                  return src ? `${fromLabel} ${src}` : "";
                 },
               },
             },
@@ -522,21 +600,17 @@
     return "day";
   }
 
+  // ───────────── record / table ─────────────
+
   function renderTable() {
     const columns = ["date", "test_name", "value", "unit", "reference_low", "reference_high", "flag", "category", "source_file"];
-    const labels = {
-      date: "Date",
-      test_name: "Test",
-      value: "Value",
-      unit: "Unit",
-      reference_low: "Low",
-      reference_high: "High",
-      flag: "Flag",
-      category: "Category",
-      source_file: "Source",
+    const colKey = {
+      date: "col_date", test_name: "col_test", value: "col_value", unit: "col_unit",
+      reference_low: "col_low", reference_high: "col_high", flag: "col_flag",
+      category: "col_category", source_file: "col_source",
     };
     const thead = document.querySelector("#data-table thead tr");
-    thead.innerHTML = columns.map((c) => `<th data-col="${c}">${labels[c]}</th>`).join("");
+    thead.innerHTML = columns.map((c) => `<th data-col="${c}">${escapeHtml(t(colKey[c]))}</th>`).join("");
     thead.querySelectorAll("th").forEach((th) => {
       th.addEventListener("click", () => {
         const col = th.dataset.col;
@@ -549,18 +623,25 @@
       });
     });
 
-    document.getElementById("table-search").addEventListener("input", drawTableBody);
+    const searchEl = document.getElementById("table-search");
+    searchEl.oninput = drawTableBody;
     drawTableBody();
 
     function drawTableBody() {
-      const q = document.getElementById("table-search").value.trim().toLowerCase();
+      const q = searchEl.value.trim().toLowerCase();
       const { col, dir } = state.tableSort;
       const rows = [...state.rows].filter((r) => {
         if (!q) return true;
-        return columns.some((c) => String(r[c] ?? "").toLowerCase().includes(q));
+        const searchable = [
+          r.date, r.test_name, testLabel(r.test_name), r.unit, r.category, catLabel(r.category), r.source_file, r.flag,
+          r.value != null ? String(r.value) : "",
+        ].join(" ").toLowerCase();
+        return searchable.includes(q);
       });
       rows.sort((a, b) => {
-        const av = a[col], bv = b[col];
+        let av = a[col], bv = b[col];
+        if (col === "test_name") { av = testLabel(av); bv = testLabel(bv); }
+        if (col === "category")  { av = catLabel(av);  bv = catLabel(bv);  }
         const cmp = (typeof av === "number" && typeof bv === "number")
           ? av - bv
           : String(av ?? "").localeCompare(String(bv ?? ""));
@@ -574,11 +655,15 @@
           if (c === "flag" && v) {
             return `<td><span class="flag ${v}">${v}</span></td>`;
           }
+          if (c === "test_name") return `<td class="${cls}">${escapeHtml(testLabel(v))}</td>`;
+          if (c === "category")  return `<td class="${cls}">${escapeHtml(catLabel(v))}</td>`;
           return `<td class="${cls}">${escapeHtml(v == null || v === "" ? "" : String(v))}</td>`;
         }).join("")}</tr>`
       ).join("");
     }
   }
+
+  // ───────────── utilities ─────────────
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({
@@ -592,7 +677,26 @@
     });
   }
 
+  function wireLangSwitch() {
+    document.querySelectorAll(".lang-btn").forEach((btn) => {
+      btn.addEventListener("click", () => setLanguage(btn.dataset.lang));
+    });
+  }
+
+  function setLanguage(lang) {
+    if (lang !== "en" && lang !== "ru") return;
+    if (lang === state.lang) return;
+    state.lang = lang;
+    localStorage.setItem("lang", lang);
+    if (state.rows.length) renderAll();
+    else applyStaticStrings();
+  }
+
+  // ───────────── boot ─────────────
+
   wireTabs();
+  wireLangSwitch();
+  applyStaticStrings();
   load().catch((err) => {
     document.getElementById("meta").textContent = "Failed to load data: " + err.message;
     console.error(err);

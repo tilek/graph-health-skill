@@ -13,30 +13,35 @@
 </head>
 <body>
 <div class="paper-grain" aria-hidden="true"></div>
+<nav class="lang-switch" aria-label="Language">
+  <button class="lang-btn" data-lang="en">EN</button>
+  <span class="lang-sep">·</span>
+  <button class="lang-btn" data-lang="ru">RU</button>
+</nav>
 <header>
   <div class="wrap">
     <div class="masthead">
       <div class="folio">
-        <span class="folio-no">№ 001</span>
+        <span class="folio-no" data-i18n="folio_no">№ 001</span>
         <span class="folio-sep">·</span>
-        <span class="folio-kind">Private record</span>
+        <span class="folio-kind" data-i18n="folio_kind">Private record</span>
       </div>
-      <h1 class="title">The Health <em>Ledger</em></h1>
-      <p class="tagline">A personal register of laboratory findings, kept <em>in the order in which they arrived</em>.</p>
+      <h1 class="title"><span data-i18n="title_main">The Health</span> <em data-i18n="title_accent">Ledger</em></h1>
+      <p class="tagline"><span data-i18n="tagline_part1">A personal register of laboratory findings, kept</span> <em data-i18n="tagline_part2">in the order in which they arrived</em><span data-i18n="tagline_end">.</span></p>
       <div class="ornament" aria-hidden="true">❧</div>
       <p id="meta" class="meta"></p>
       <details class="sources" id="sources">
-        <summary>Sources <span class="sources-count" id="sources-count"></span></summary>
+        <summary><span data-i18n="sources_label">Sources</span> <span class="sources-count" id="sources-count"></span></summary>
         <div class="sources-body">
-          <p class="sources-intro">Every reading is pulled directly from one of these files. Click a row to filter the record view to readings from that file.</p>
+          <p class="sources-intro" data-i18n="sources_intro">Every reading is pulled directly from one of these files. Click a row to filter the record view to readings from that file.</p>
           <ul id="sources-list"></ul>
         </div>
       </details>
     </div>
     <nav class="tabs" role="tablist">
-      <button class="tab active" data-target="summary">At a glance</button>
-      <button class="tab" data-target="charts">Over time</button>
-      <button class="tab" data-target="table">The record</button>
+      <button class="tab active" data-target="summary" data-i18n="tab_summary">At a glance</button>
+      <button class="tab" data-target="charts" data-i18n="tab_charts">Over time</button>
+      <button class="tab" data-target="table" data-i18n="tab_record">The record</button>
     </nav>
   </div>
 </header>
@@ -44,33 +49,33 @@
   <section id="summary" class="panel active">
     <section id="priorities" class="priorities" hidden>
       <div class="panel-head priorities-head">
-        <h2>What deserves your attention</h2>
-        <p class="panel-sub">Tests that are flagged, drifting toward a threshold, or part of a pattern with other readings. Click any item to read the full note.</p>
+        <h2 data-i18n="priorities_title">What deserves your attention</h2>
+        <p class="panel-sub" data-i18n="priorities_sub">Tests that are flagged, drifting toward a threshold, or part of a pattern with other readings. Click any item to read the full note.</p>
       </div>
       <div id="priorities-list" class="priorities-list"></div>
-      <p class="priorities-disclaimer"><strong>Not medical advice.</strong> These are pattern-spotting notes drawn from your actual readings and standard clinical references. Bring them to your doctor for interpretation.</p>
+      <p class="priorities-disclaimer"><strong data-i18n="priorities_discl_strong">Not medical advice.</strong><span data-i18n="priorities_discl"> These are pattern-spotting notes drawn from your actual readings and standard clinical references. Bring them to your doctor for interpretation.</span></p>
     </section>
     <div class="panel-head">
-      <h2>Latest readings</h2>
-      <p class="panel-sub">Most recent value per test, with the change from the reading before.</p>
+      <h2 data-i18n="summary_title">Latest readings</h2>
+      <p class="panel-sub" data-i18n="summary_sub">Most recent value per test, with the change from the reading before.</p>
     </div>
     <div id="summary-grid" class="grid"></div>
   </section>
   <section id="charts" class="panel">
     <div class="panel-head">
-      <h2>Over time</h2>
-      <p class="panel-sub">Each line charts one test. The sage wash marks the reference range.</p>
+      <h2 data-i18n="charts_title">Over time</h2>
+      <p class="panel-sub" data-i18n="charts_sub">Each line charts one test. The sage wash marks the reference range.</p>
     </div>
     <div id="category-filter" class="filter"></div>
     <div id="chart-container"></div>
   </section>
   <section id="table" class="panel">
     <div class="panel-head">
-      <h2>The record</h2>
-      <p class="panel-sub">Every entry as it lives in <code>health_data.csv</code>. Click a column to sort.</p>
+      <h2 data-i18n="record_title">The record</h2>
+      <p class="panel-sub"><span data-i18n="record_sub_pre">Every entry as it lives in</span> <code>health_data.csv</code><span data-i18n="record_sub_post">. Click a column to sort.</span></p>
     </div>
     <div class="table-controls">
-      <input id="table-search" type="search" placeholder="Search the record…">
+      <input id="table-search" type="search" placeholder="Search the record…" data-i18n-placeholder="record_search">
     </div>
     <div class="table-scroll">
       <table id="data-table">
@@ -81,7 +86,7 @@
   </section>
   <footer class="colophon">
     <span class="ornament">❦</span>
-    <p>Set in <em>Instrument Serif</em> &amp; <em>Spectral</em>. Kept locally, read only by you.</p>
+    <p><span data-i18n="fonts_by">Set in</span> <em>Instrument Serif</em> &amp; <em>Spectral</em>. <span data-i18n="colophon">Kept locally, read only by you.</span></p>
   </footer>
 </main>
 <dialog id="detail" class="detail-modal">
@@ -103,36 +108,39 @@
       <ul class="detail-rec-actions" id="detail-rec-actions"></ul>
     </div>
     <section class="detail-section" id="detail-about">
-      <h3>What it is</h3>
+      <h3 data-i18n="detail_about">What it is</h3>
       <p id="detail-desc"></p>
     </section>
     <section class="detail-section" id="detail-interpret">
-      <h3>What changes it</h3>
+      <h3 data-i18n="detail_interpret">What changes it</h3>
       <dl id="detail-interpret-body"></dl>
     </section>
     <section class="detail-section" id="detail-suggest">
-      <h3>Ways to move the needle</h3>
+      <h3 data-i18n="detail_suggest">Ways to move the needle</h3>
       <ul id="detail-suggestions"></ul>
     </section>
     <p class="detail-disclaimer" id="detail-disclaimer">
-      <strong>Not medical advice.</strong> These are general educational notes drawn from standard clinical references. Your personal results should be interpreted by your doctor alongside your history, medications, and other readings.
+      <strong data-i18n="detail_discl_strong">Not medical advice.</strong><span data-i18n="detail_discl"> These are general educational notes drawn from standard clinical references. Your personal results should be interpreted by your doctor alongside your history, medications, and other readings.</span>
     </p>
     <section class="detail-section detail-history">
-      <h3>Your readings <span class="detail-history-count" id="detail-history-count"></span></h3>
+      <h3><span data-i18n="detail_readings">Your readings</span> <span class="detail-history-count" id="detail-history-count"></span></h3>
       <div class="detail-history-scroll">
         <table id="detail-history-table">
-          <thead><tr><th>Date</th><th>Value</th><th>Flag</th><th>Source</th></tr></thead>
+          <thead><tr><th data-i18n="col_date">Date</th><th data-i18n="col_value">Value</th><th data-i18n="col_flag">Flag</th><th data-i18n="col_source">Source</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
     </section>
     <footer class="detail-foot">
-      <button class="detail-record-link" id="detail-view-record">View in the record →</button>
+      <button class="detail-record-link" id="detail-view-record" data-i18n="detail_view_rec">View in the record →</button>
     </footer>
   </article>
 </dialog>
+<script src="i18n.js"></script>
 <script src="biomarkers.js"></script>
+<script src="biomarkers.ru.js"></script>
 <script src="recommendations.js"></script>
+<script src="recommendations.ru.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
