@@ -689,6 +689,165 @@ const TablePanel = () => html`
   </section>
 `
 
+// ───────────── detail modal ─────────────
+
+const detailEntry = () => {
+  const name = state.detail
+  if (!name) return null
+  const byName = testsByName()
+  const series = byName[name]
+  if (!series?.length) return null
+  return {
+    name,
+    series,
+    latest: series[series.length - 1],
+    info: biomarkersContext()[name] ?? null,
+    rec: recommendationsContext()[name] ?? null,
+  }
+}
+
+const closeDetail = () => { state.detail = null }
+
+// Open/close the dialog when state.detail changes.
+// queueMicrotask ensures Arrow has rendered the <dialog> before we call showModal().
+watch(() => {
+  const shouldOpen = state.detail != null
+  queueMicrotask(() => {
+    const el = document.getElementById('detail')
+    if (!el) return
+    if (shouldOpen && !el.open && typeof el.showModal === 'function') {
+      el.showModal()
+      const scroll = el.querySelector('.detail-body')
+      if (scroll) scroll.scrollTop = 0
+    } else if (!shouldOpen && el.open) {
+      el.close()
+    }
+  })
+})
+
+const DetailBody = (entry) => {
+  const { name, series, latest, info, rec } = entry
+  const flag = latest.flag || ''
+  const hasRange = latest.reference_low != null || latest.reference_high != null
+  const rangeStr = hasRange
+    ? `${t('detail_range')} ${latest.reference_low ?? '—'}..${latest.reference_high ?? '—'}`
+    : t('detail_no_range')
+  const hist = [...series].reverse()
+  const readingsFn = strings[state.lang]?.detail_reading_n ?? ((n) => `${n} readings`)
+  const noInfoFn = strings[state.lang]?.detail_no_info ?? ((n) => `No reference notes yet for "${n}".`)
+
+  return html`
+    <article class="detail-body">
+      <header class="detail-head">
+        <p class="detail-eyebrow">${() => catLabel(latest.category || '')}</p>
+        <h2>${testLabel(name)}</h2>
+        <div class="detail-latest">
+          <span class="detail-val">${fmt(latest.value)}<span class="unit">${latest.unit || ''}</span></span>
+          ${flag ? html`<span class="flag ${flag}">${flag}</span>` : ''}
+          <span class="detail-date">${latest.date}</span>
+          <span class="detail-range">${rangeStr}</span>
+        </div>
+      </header>
+
+      ${rec ? html`
+        <div class="detail-rec sev-${rec.severity}">
+          <div class="detail-rec-top">
+            <span class="detail-rec-label sev-${rec.severity}">${severityLabel(rec.severity)}</span>
+          </div>
+          <p class="detail-rec-headline">${rec.headline || ''}</p>
+          <p class="detail-rec-detail">${rec.detail || ''}</p>
+          ${(rec.actions || []).length ? html`
+            <ul class="detail-rec-actions">
+              ${(rec.actions || []).map((a) => html`<li>${a}</li>`)}
+            </ul>
+          ` : ''}
+        </div>
+      ` : ''}
+
+      ${info ? html`
+        <section class="detail-section">
+          <h3>${() => t('detail_about')}</h3>
+          <p>${info.description || ''}</p>
+        </section>
+        ${(info.high || info.low) ? html`
+          <section class="detail-section">
+            <h3>${() => t('detail_interpret')}</h3>
+            <dl>
+              ${info.high ? html`<dt class="hi">${() => t('detail_if_high')}</dt><dd>${info.high}</dd>` : ''}
+              ${info.low  ? html`<dt class="lo">${() => t('detail_if_low')}</dt><dd>${info.low}</dd>` : ''}
+            </dl>
+          </section>
+        ` : ''}
+        ${(info.suggestions || []).length ? html`
+          <section class="detail-section">
+            <h3>${() => t('detail_suggest')}</h3>
+            <ul>${(info.suggestions || []).map((s) => html`<li>${s}</li>`)}</ul>
+          </section>
+        ` : ''}
+      ` : html`
+        <section class="detail-section">
+          <h3>${() => t('detail_no_info_h')}</h3>
+          <div class="detail-missing">${noInfoFn(testLabel(name))}</div>
+        </section>
+      `}
+
+      <p class="detail-disclaimer">
+        <strong>${() => t('detail_discl_strong')}</strong>
+        <span>${() => t('detail_discl')}</span>
+      </p>
+
+      <section class="detail-section detail-history">
+        <h3>
+          <span>${() => t('detail_readings')}</span>
+          <span class="detail-history-count">· ${readingsFn(hist.length)}</span>
+        </h3>
+        <div class="detail-history-scroll">
+          <table id="detail-history-table">
+            <thead><tr>
+              <th>${() => t('col_date')}</th>
+              <th>${() => t('col_value')}</th>
+              <th>${() => t('col_flag')}</th>
+              <th>${() => t('col_source')}</th>
+            </tr></thead>
+            <tbody>
+              ${hist.map((r) => html`
+                <tr>
+                  <td>${r.date}</td>
+                  <td class="num">${fmt(r.value)} ${r.unit || ''}</td>
+                  <td>${r.flag ? html`<span class="flag ${r.flag}">${r.flag}</span>` : ''}</td>
+                  <td class="src" title="${r.source_file || ''}">${basename(r.source_file) || '—'}</td>
+                </tr>
+              `.key(`${r.date}|${r.source_file}`))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer class="detail-foot">
+        <button class="detail-record-link"
+                @click="${() => { closeDetail(); jumpToRecord(name) }}">
+          ${() => t('detail_view_rec')}
+        </button>
+      </footer>
+    </article>
+  `
+}
+
+const DetailModal = () => html`
+  <dialog id="detail" class="detail-modal"
+          @click="${(e) => { if (e.target.id === 'detail') closeDetail() }}"
+          @close="${() => closeDetail()}">
+    <form method="dialog" class="detail-close-form">
+      <button class="detail-close" aria-label="Close"
+              @click="${() => { state.detail = null }}">✕</button>
+    </form>
+    ${() => {
+      const entry = detailEntry()
+      return entry ? DetailBody(entry) : ''
+    }}
+  </dialog>
+`
+
 // ───────────── root view ─────────────
 
 const App = () => html`
@@ -696,9 +855,18 @@ const App = () => html`
   ${Header()}
   <main class="wrap">
     ${() => state.activeTab === 'summary' ? SummaryPanel() : ''}
-    ${() => state.activeTab === 'charts'  ? ChartsPanel() : ''}
-    ${() => state.activeTab === 'table'   ? TablePanel() : ''}
+    ${() => state.activeTab === 'charts'  ? ChartsPanel()  : ''}
+    ${() => state.activeTab === 'table'   ? TablePanel()   : ''}
+    <footer class="colophon">
+      <span class="ornament">❦</span>
+      <p>
+        <span>${() => t('fonts_by')}</span>
+        <em>Instrument Serif</em> & <em>Spectral</em>.
+        <span>${() => t('colophon')}</span>
+      </p>
+    </footer>
   </main>
+  ${DetailModal()}
 `
 
 render(document.getElementById('app'), App())
