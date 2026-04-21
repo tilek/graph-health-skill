@@ -1,7 +1,7 @@
-// UI string translations. Test names and category names get their own mapping below.
-// Fallback: if a key is missing in the chosen language, English is used.
+// UI string translations, canonical test-name and category labels.
+// Fallback: if a key is missing in the chosen language, English is used by call sites.
 
-window.I18N = {
+export const strings = {
   en: {
     title_main:        "The Health",
     title_accent:      "Ledger",
@@ -163,7 +163,7 @@ window.I18N = {
     lang_en:           "EN",
     lang_ru:           "RU",
   },
-};
+}
 
 // Russian plural helper (1, 2-4, 5-0-10-20)
 function russianPlural(n, one, few, many) {
@@ -176,7 +176,7 @@ function russianPlural(n, one, few, many) {
 
 // ───────── Canonical test names → Russian display labels ─────────
 
-window.TEST_NAMES_RU = {
+export const testNamesRu = {
   // Complete Blood Count
   "Hemoglobin":                                   "Гемоглобин",
   "Hematocrit":                                   "Гематокрит",
@@ -294,11 +294,11 @@ window.TEST_NAMES_RU = {
   // Other
   "C-Reactive Protein":                           "С-реактивный белок",
   "hs-CRP":                                       "hs-CRP (высокочувствительный CРБ)",
-};
+}
 
 // ───────── Category translations ─────────
 
-window.CATEGORIES_RU = {
+export const categoriesRu = {
   "Complete Blood Count":  "Общий анализ крови",
   "Metabolic Panel":       "Биохимия",
   "Lipid Panel":           "Липидный профиль",
@@ -310,4 +310,4 @@ window.CATEGORIES_RU = {
   "Fatty Acids":           "Жирные кислоты",
   "Body Metrics":          "Антропометрия",
   "Other":                 "Прочее",
-};
+}
