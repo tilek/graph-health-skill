@@ -19,7 +19,23 @@ Visually the dashboard is set in *Instrument Serif* + *Spectral* on a warm paper
 
 ## Installing the skill
 
-Drop this directory into a place where your tooling can find skills. For Claude Code user-level skills:
+### Recommended: [`npx skills`](https://github.com/vercel-labs/skills) (Vercel Labs)
+
+One command, works with Claude Code and 40+ other agents:
+
+```bash
+npx skills add -g -a claude-code tilek/graph-health-skill
+```
+
+- `-g` installs globally (user-level, available in every project)
+- `-a claude-code` targets Claude Code specifically (drop it to install for every agent you have)
+- Omit `-g` to install as a project-local skill under the current working directory
+
+You can also pass the full URL (`https://github.com/tilek/graph-health-skill`) or a `git@…` SSH URL.
+
+### Alternative: manual git clone
+
+If you don't want `npx skills`, clone into the Claude Code skills directory yourself:
 
 ```bash
 git clone https://github.com/tilek/graph-health-skill.git ~/.claude/skills/graph-health-skill
@@ -31,7 +47,7 @@ Or symlink a working copy:
 ln -s "$PWD" ~/.claude/skills/graph-health-skill
 ```
 
-The skill activates when Claude detects a health-data request (lab report, blood work, biomarker tracking, etc.).
+Either way, the skill activates when Claude detects a health-data request (lab report, blood work, biomarker tracking, etc.).
 
 ## Where your data lives
 
@@ -51,18 +67,26 @@ Pick any folder you like — `~/health`, `~/Documents/labs`, anywhere. The skill
 
 ## Updating the skill
 
-Pull the latest from the skill install location:
+### If you installed with `npx skills`
+
+```bash
+npx skills update graph-health-skill
+```
+
+Or update every skill at once with `npx skills update`.
+
+### If you installed manually
 
 ```bash
 cd ~/.claude/skills/graph-health-skill
 git pull
 ```
 
-Your health data is in a completely separate location (your workspace — see above), so `git pull` only updates the skill's own files (SKILL.md, scripts, assets, references) and never touches your readings. The dashboard picks up changes on the next browser refresh; if `serve.py` itself was updated, restart it (Ctrl+C and rerun).
+Either way, your health data is in a completely separate location (your workspace — see [Where your data lives](#where-your-data-lives)), so an update only touches the skill's own files (SKILL.md, scripts, assets, references) and never touches your readings. The dashboard picks up changes on the next browser refresh; if `serve.py` itself was updated, restart it (Ctrl+C and rerun).
 
-If a pull reports local changes, you've tweaked a skill file (e.g. added entries to `biomarkers.js` or `references/test-names.md`). Stash them first (`git stash`), pull, then reapply (`git stash pop`) — or fork the repo if you're maintaining a significantly customized version.
+If a manual `git pull` reports local changes, you've tweaked a skill file (e.g. added entries to `biomarkers.js` or `references/test-names.md`). Stash them first (`git stash`), pull, then reapply (`git stash pop`) — or fork the repo if you're maintaining a significantly customized version.
 
-After a pull that changes `recommendations.js`, regenerate your personalized notes by asking Claude something like *"the skill was updated; regenerate my personalized recommendations from `health_data.csv`"*. Those notes reference your actual values, so they should be rebuilt whenever either the data or the skill's analysis logic changes.
+After an update that changes `recommendations.js`, regenerate your personalized notes by asking Claude something like *"the skill was updated; regenerate my personalized recommendations from `health_data.csv`"*. Those notes reference your actual values, so they should be rebuilt whenever either the data or the skill's analysis logic changes.
 
 ## Using it — a typical session
 
