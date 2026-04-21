@@ -598,6 +598,97 @@ watch(() => {
   })
 })
 
+// ───────────── table ─────────────
+
+const TABLE_COLUMNS = [
+  'date', 'test_name', 'value', 'unit',
+  'reference_low', 'reference_high', 'flag',
+  'category', 'source_file',
+]
+
+const COL_I18N_KEY = {
+  date: 'col_date', test_name: 'col_test', value: 'col_value', unit: 'col_unit',
+  reference_low: 'col_low', reference_high: 'col_high', flag: 'col_flag',
+  category: 'col_category', source_file: 'col_source',
+}
+
+const tableRows = () => {
+  const q = state.tableSearch.trim().toLowerCase()
+  const { col, dir } = state.tableSort
+  const rows = state.rows.filter((r) => {
+    if (!q) return true
+    const searchable = [
+      r.date, r.test_name, testLabel(r.test_name),
+      r.unit, r.category, catLabel(r.category),
+      r.source_file, r.flag,
+      r.value != null ? String(r.value) : '',
+    ].join(' ').toLowerCase()
+    return searchable.includes(q)
+  })
+  rows.sort((a, b) => {
+    let av = a[col], bv = b[col]
+    if (col === 'test_name') { av = testLabel(av); bv = testLabel(bv) }
+    if (col === 'category')  { av = catLabel(av);  bv = catLabel(bv)  }
+    const cmp = (typeof av === 'number' && typeof bv === 'number')
+      ? av - bv
+      : String(av ?? '').localeCompare(String(bv ?? ''))
+    return dir === 'asc' ? cmp : -cmp
+  })
+  return rows
+}
+
+const clickColumn = (col) => {
+  if (state.tableSort.col === col) {
+    state.tableSort = { col, dir: state.tableSort.dir === 'asc' ? 'desc' : 'asc' }
+  } else {
+    state.tableSort = { col, dir: 'asc' }
+  }
+}
+
+const TablePanel = () => html`
+  <section class="panel active">
+    <div class="panel-head">
+      <h2>${() => t('record_title')}</h2>
+      <p class="panel-sub">
+        <span>${() => t('record_sub_pre')}</span>
+        <code>health_data.csv</code>
+        <span>${() => t('record_sub_post')}</span>
+      </p>
+    </div>
+    <div class="table-controls">
+      <input type="search"
+             placeholder="${() => t('record_search')}"
+             value="${() => state.tableSearch}"
+             @input="${(e) => { state.tableSearch = e.target.value }}">
+    </div>
+    <div class="table-scroll">
+      <table id="data-table">
+        <thead><tr>
+          ${TABLE_COLUMNS.map((c) => html`
+            <th data-col="${c}" @click="${() => clickColumn(c)}">${() => t(COL_I18N_KEY[c])}</th>
+          `.key(c))}
+        </tr></thead>
+        <tbody>
+          ${() => tableRows().map((r, i) => html`
+            <tr>
+              ${TABLE_COLUMNS.map((c) => {
+                const v = r[c]
+                const cls = (c === 'value' || c === 'reference_low' || c === 'reference_high') ? 'num' : ''
+                if (c === 'flag' && v) {
+                  return html`<td><span class="flag ${v}">${v}</span></td>`
+                }
+                if (c === 'test_name') return html`<td class="${cls}">${testLabel(v)}</td>`
+                if (c === 'category')  return html`<td class="${cls}">${catLabel(v)}</td>`
+                return html`<td class="${cls}">${v == null || v === '' ? '' : String(v)}</td>`
+              })}
+            </tr>
+          `.key(`${r.date}|${r.test_name}|${r.source_file}|${i}`))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+`
+
 // ───────────── root view ─────────────
 
 const App = () => html`
@@ -606,7 +697,7 @@ const App = () => html`
   <main class="wrap">
     ${() => state.activeTab === 'summary' ? SummaryPanel() : ''}
     ${() => state.activeTab === 'charts'  ? ChartsPanel() : ''}
-    ${() => state.activeTab === 'table'   ? html`<section class="panel active"><p>Table coming next task.</p></section>` : ''}
+    ${() => state.activeTab === 'table'   ? TablePanel() : ''}
   </main>
 `
 
